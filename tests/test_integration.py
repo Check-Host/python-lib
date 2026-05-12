@@ -40,6 +40,24 @@ def test_live_locations(client: CheckHost) -> None:
 def test_live_info(client: CheckHost) -> None:
     info = client.info("check-host.cc")
     assert info.ip
+    # Swagger 2.0.0 fields - allowed to be empty but should exist as attributes
+    assert isinstance(info.country_code, str)
+    assert isinstance(info.privacy, dict)
+
+
+def test_live_myinfo(client: CheckHost) -> None:
+    info = client.myinfo()
+    assert info.ip
+    assert info.country
+    assert isinstance(info.is_eu, bool)
+
+
+def test_live_info_force(client: CheckHost) -> None:
+    # /infoforce only accepts IPs (not hostnames) - it bypasses hostname
+    # resolution and calls IPLocate directly.
+    info = client.info_force("1.1.1.1")
+    assert info.ip == "1.1.1.1"
+    assert info.country
 
 
 def test_live_ping_and_poll(client: CheckHost) -> None:
@@ -63,3 +81,10 @@ def test_live_og_image(client: CheckHost) -> None:
     time.sleep(2.0)
     image = client.og_image(task.uuid)
     assert image.startswith(b"\x89PNG"), "expected PNG magic header"
+
+
+def test_live_country_map_svg(client: CheckHost) -> None:
+    task = client.ping("1.1.1.1", region=[Continent.EUROPE])
+    time.sleep(2.0)
+    svg = client.country_map(task.uuid)
+    assert b"<svg" in svg[:200]

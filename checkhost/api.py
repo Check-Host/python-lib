@@ -120,11 +120,39 @@ class CheckHost:
             raise CheckHostValidationError(f"Unexpected /info response type: {type(data).__name__}")
         return MinResponseINFO.from_json(data)
 
-    def whois(self, target: str) -> dict[str, Any]:
-        """Run a WHOIS lookup for *target* (``POST /whois``).
+    def info_force(self, target: str) -> MinResponseINFO:
+        """Force a fresh geolocation lookup (``GET /infoforce/{target}``).
 
-        Returns the raw API response. The Check-Host API does not publish a
-        schema for this endpoint.
+        Same response shape as :meth:`info` but bypasses the local 90-day
+        geo cache and re-queries upstream providers. Use sparingly.
+        """
+        target = validate_target(target)
+        path = f"/infoforce/{urllib.parse.quote(target, safe='')}"
+        data = self._client.get(path)
+        if not isinstance(data, dict):
+            raise CheckHostValidationError(
+                f"Unexpected /infoforce response type: {type(data).__name__}"
+            )
+        return MinResponseINFO.from_json(data)
+
+    def myinfo(self) -> MinResponseINFO:
+        """Geolocation + ASN for the caller's own IP (``GET /myinfo``).
+
+        Subject to bot detection - repeated calls without a key may yield
+        a ``CheckHostRateLimitError`` carrying a captcha verification URL
+        in :attr:`response`.
+        """
+        data = self._client.get("/myinfo")
+        if not isinstance(data, dict):
+            raise CheckHostValidationError(
+                f"Unexpected /myinfo response type: {type(data).__name__}"
+            )
+        return MinResponseINFO.from_json(data)
+
+    def whois(self, target: str) -> dict[str, Any]:
+        """Run a WHOIS / RDAP lookup for *target* (``POST /whois``).
+
+        Returns the raw API response. The shape varies by registry / RIR.
         """
         target = validate_target(target)
         data = self._client.post("/whois", {"target": target})
@@ -347,6 +375,54 @@ class CheckHost:
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(image)
+        return out
+
+    def country_map(
+        self,
+        uuid: str,
+        *,
+        format: str = "svg",
+        resolution: str = "med",
+    ) -> bytes:
+        """Fetch the per-country world map (``GET /report/{uuid}/country-map``).
+
+        Args:
+            uuid: Report UUID returned by a monitoring method.
+            format: ``"svg"`` (default) or ``"png"``.
+            resolution: PNG resolution: ``"low"`` (800px), ``"med"`` (1200px),
+                ``"high"`` (2000px). Ignored for SVG.
+
+        Returns:
+            Raw image bytes. SVG is UTF-8 text; PNG is binary.
+        """
+        uuid = self._validate_uuid(uuid)
+        if format not in {"svg", "png"}:
+            raise CheckHostValidationError(f"format must be 'svg' or 'png', got '{format}'")
+        if resolution not in {"low", "med", "high"}:
+            raise CheckHostValidationError(
+                f"resolution must be one of 'low', 'med', 'high', got '{resolution}'"
+            )
+        query = urllib.parse.urlencode({"format": format, "res": resolution})
+        path = f"/report/{urllib.parse.quote(uuid, safe='')}/country-map?{query}"
+        return self._client.get_bytes(path)
+
+    def save_country_map(
+        self,
+        uuid: str,
+        path: str | Path,
+        *,
+        format: str = "svg",
+        resolution: str = "med",
+    ) -> Path:
+        """Fetch :meth:`country_map` and write it to disk.
+
+        Returns:
+            The resolved path that was written.
+        """
+        data = self.country_map(uuid, format=format, resolution=resolution)
+        out = Path(path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
         return out
 
     # ------------------------------------------------------------------

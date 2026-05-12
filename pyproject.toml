@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "check-host-api"
 dynamic = ["version"]
-description = "A lightweight, zero-dependency Python SDK for the Check-Host.cc API."
+description = "Official zero-dependency Python 3.10+ SDK for the Check-Host.cc API. Distributed network diagnostics (ping, MTR, DNS, HTTP, TCP, UDP, WHOIS) from 60+ global locations."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }

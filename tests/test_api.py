@@ -87,6 +87,43 @@ class TestUtilityMethods:
             result = ch.whois("example.com")
         assert result == {"raw": ["raw", "lines"]}
 
+    def test_myinfo_endpoint(self, transport: FakeTransport) -> None:
+        transport.queue_json(
+            {
+                "ip": "45.95.55.230",
+                "country": "Germany",
+                "countryCode": "DE",
+                "city": "Berlin",
+                "isEu": True,
+                "success": True,
+            }
+        )
+        with CheckHost() as ch:
+            info = ch.myinfo()
+        assert info.ip == "45.95.55.230"
+        assert info.country_code == "DE"
+        assert info.is_eu is True
+        assert transport.last_call["url"].endswith("/myinfo")
+        assert transport.last_call["method"] == "GET"
+
+    def test_info_force_endpoint(self, transport: FakeTransport) -> None:
+        transport.queue_json(
+            {"ip": "1.1.1.1", "country": "USA", "countryCode": "US", "success": True}
+        )
+        with CheckHost() as ch:
+            info = ch.info_force("1.1.1.1")
+        assert info.ip == "1.1.1.1"
+        assert info.country_code == "US"
+        assert transport.last_call["url"].endswith("/infoforce/1.1.1.1")
+        assert transport.last_call["method"] == "GET"
+
+    def test_info_force_url_encodes_target(self, transport: FakeTransport) -> None:
+        transport.queue_json({"ip": "1.2.3.4", "success": True})
+        with CheckHost() as ch:
+            ch.info_force("host with space")
+        # Space encoded as %20 (urllib's quote with safe='') keeps non-reserved chars.
+        assert "%20" in transport.last_call["url"]
+
 
 class TestMonitoringMethods:
     def test_ping_serialises_options(self, transport: FakeTransport) -> None:
@@ -303,6 +340,40 @@ class TestOGImage:
         with CheckHost() as ch:
             written = ch.save_og_image("uuid-img", target)
         assert written.read_bytes() == b"\x89PNGdata"
+
+
+class TestCountryMap:
+    def test_country_map_default_svg(self, transport: FakeTransport) -> None:
+        transport.queue_bytes(b"<svg xmlns='...'>...</svg>", content_type="image/svg+xml")
+        with CheckHost() as ch:
+            data = ch.country_map("uuid-cm")
+        assert data.startswith(b"<svg")
+        assert "format=svg" in transport.last_call["url"]
+        assert "res=med" in transport.last_call["url"]
+        assert "/report/uuid-cm/country-map" in transport.last_call["url"]
+
+    def test_country_map_png_high(self, transport: FakeTransport) -> None:
+        transport.queue_bytes(b"\x89PNG\r\n\x1a\n")
+        with CheckHost() as ch:
+            data = ch.country_map("uuid-cm", format="png", resolution="high")
+        assert data.startswith(b"\x89PNG")
+        assert "format=png" in transport.last_call["url"]
+        assert "res=high" in transport.last_call["url"]
+
+    def test_country_map_validates_format(self, transport: FakeTransport) -> None:
+        with CheckHost() as ch, pytest.raises(CheckHostValidationError):
+            ch.country_map("uuid", format="jpg")
+
+    def test_country_map_validates_resolution(self, transport: FakeTransport) -> None:
+        with CheckHost() as ch, pytest.raises(CheckHostValidationError):
+            ch.country_map("uuid", resolution="ultra")
+
+    def test_save_country_map_writes_svg(self, transport: FakeTransport, tmp_path: Path) -> None:
+        transport.queue_bytes(b"<svg>data</svg>", content_type="image/svg+xml")
+        target = tmp_path / "map.svg"
+        with CheckHost() as ch:
+            written = ch.save_country_map("uuid-cm", target)
+        assert written.read_bytes() == b"<svg>data</svg>"
 
 
 class TestContextManager:

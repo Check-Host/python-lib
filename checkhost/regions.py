@@ -31,6 +31,9 @@ class Continent:
 class DNSType:
     """DNS record types supported by the ``dns`` endpoint."""
 
+    A_AAAA: Final[str] = "A/AAAA"
+    """Combined A + AAAA query (the API default in Swagger 2.0.0)."""
+
     A: Final[str] = "A"
     AAAA: Final[str] = "AAAA"
     NS: Final[str] = "NS"
@@ -59,6 +62,7 @@ class DNSType:
     DNSKEY: Final[str] = "DNSKEY"
 
     ALL: Final[tuple[str, ...]] = (
+        A_AAAA,
         A,
         AAAA,
         NS,

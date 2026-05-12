@@ -13,6 +13,7 @@ from ._exceptions import CheckHostValidationError
 
 DNS_QUERY_METHODS: Final[frozenset[str]] = frozenset(
     {
+        "A/AAAA",
         "A",
         "AAAA",
         "NS",
@@ -98,12 +99,18 @@ def validate_repeat_checks(value: int, *, mtr: bool = False) -> int:
 
 
 def validate_dns_query_method(method: str) -> str:
-    """Ensure *method* is one of the DNS record types accepted by the API."""
+    """Ensure *method* is one of the DNS record types accepted by the API.
+
+    Accepts the special compound ``A/AAAA`` (Swagger 2.0.0 default) as
+    well as the individual record types.
+    """
     if not isinstance(method, str):
         raise CheckHostValidationError(
             f"query_method must be a string, got {type(method).__name__}"
         )
-    normalized = method.strip().upper()
+    stripped = method.strip()
+    # Preserve "A/AAAA" verbatim; otherwise compare case-insensitively.
+    normalized = stripped if stripped == "A/AAAA" else stripped.upper()
     if normalized not in DNS_QUERY_METHODS:
         raise CheckHostValidationError(
             f"query_method '{method}' is not a valid DNS record type. "

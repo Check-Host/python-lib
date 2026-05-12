@@ -8,25 +8,82 @@ from typing import Any
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MinResponseINFO:
-    """Geolocation / ISP information for a host or IP (``POST /info``)."""
+    """Geolocation / ISP / privacy / abuse data for a host or IP.
+
+    Returned by :meth:`CheckHost.info`, :meth:`CheckHost.info_force`, and
+    :meth:`CheckHost.myinfo` (``POST /info``, ``GET /infoforce/{target}``,
+    ``GET /myinfo``).
+
+    Aligned with Swagger 2.0.0. Backwards-compatible fields ``iprange`` and
+    ``zipcode`` are kept (they fall back to ``postal_code`` / empty when the
+    new schema doesn't supply them) so existing callers keep working.
+    """
 
     ip: str
     reverse: str
-    iprange: str
     country: str
+    country_code: str
+    is_eu: bool
     city: str
-    zipcode: str
+    continent: str
+    latitude: float | None
+    longitude: float | None
+    time_zone: str
+    postal_code: str
+    subdivision: str
+    currency_code: str
+    calling_code: str
+    privacy: dict[str, Any]
+    asn: dict[str, Any]
+    company: dict[str, Any]
+    abuse: dict[str, Any]
+    success: bool
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    # ── Back-compat helpers ────────────────────────────────────────────
+    @property
+    def zipcode(self) -> str:
+        """Alias for :attr:`postal_code` (Swagger 1.2.0 compatibility)."""
+        return self.postal_code
+
+    @property
+    def iprange(self) -> str:
+        """Empty under Swagger 2.0.0; field removed from the API response."""
+        return str(self.raw.get("iprange", ""))
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> MinResponseINFO:
+        def _num(v: Any) -> float | None:
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                return float(v)
+            return None
+
+        def _str(v: Any) -> str:
+            return "" if v is None else str(v)
+
+        def _dict(v: Any) -> dict[str, Any]:
+            return dict(v) if isinstance(v, dict) else {}
+
         return cls(
-            ip=str(data.get("ip", "")),
-            reverse=str(data.get("reverse", "")),
-            iprange=str(data.get("iprange", "")),
-            country=str(data.get("country", "")),
-            city=str(data.get("city", "")),
-            zipcode=str(data.get("zipcode", "")),
+            ip=_str(data.get("ip", "")),
+            reverse=_str(data.get("reverse", "")),
+            country=_str(data.get("country", "")),
+            country_code=_str(data.get("countryCode", "")),
+            is_eu=bool(data.get("isEu", False)),
+            city=_str(data.get("city", "")),
+            continent=_str(data.get("continent", "")),
+            latitude=_num(data.get("latitude")),
+            longitude=_num(data.get("longitude")),
+            time_zone=_str(data.get("timeZone", "")),
+            postal_code=_str(data.get("postalCode", data.get("zipcode", ""))),
+            subdivision=_str(data.get("subdivision", "")),
+            currency_code=_str(data.get("currencyCode", "")),
+            calling_code=_str(data.get("callingCode", "")),
+            privacy=_dict(data.get("privacy")),
+            asn=_dict(data.get("asn")),
+            company=_dict(data.get("company")),
+            abuse=_dict(data.get("abuse")),
+            success=bool(data.get("success", True)),
             raw=dict(data),
         )
 
@@ -36,20 +93,27 @@ class CheckCreated:
     """Response object returned by every monitoring endpoint (``ping``,
     ``dns``, ``tcp``, ``udp``, ``http``, ``mtr``).
 
-    The ``uuid`` field is the handle for subsequent ``report()`` / ``og_image()``
-    calls.
+    The ``uuid`` field is the handle for subsequent ``report()`` /
+    ``og_image()`` / ``country_map()`` calls. Aligned with Swagger 2.0.0:
+    the live API also echoes back ``region``, ``port``, ``query``,
+    ``payload`` and exposes ``og-imageURL`` on every dispatch.
     """
 
     status: int
     target: str
     method: str
     repeat_checks: int
+    region: list[str]
     uuid: str
     report_url: str
     api_url: str
+    og_image_url: str
     autodelete: str
     message: str
     success: str
+    port: int | None
+    query: str | None
+    payload: str | None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
@@ -68,17 +132,37 @@ class CheckCreated:
             success_str = "success" if raw_success else "failure"
         else:
             success_str = str(raw_success)
+
+        region_raw = data.get("region")
+        region = [str(r) for r in region_raw] if isinstance(region_raw, list) else []
+
+        def _optstr(v: Any) -> str | None:
+            return None if v is None else str(v)
+
+        def _optint(v: Any) -> int | None:
+            if v is None or isinstance(v, bool):
+                return None
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+
         return cls(
             status=int(data.get("status", 0)),
             target=str(data.get("target", "")),
             method=str(data.get("method", "")),
             repeat_checks=int(data.get("repeatchecks", 0)),
+            region=region,
             uuid=str(data.get("uuid", "")),
             report_url=str(data.get("reportURL", "")),
             api_url=str(data.get("apiURL", "")),
+            og_image_url=str(data.get("og-imageURL", "")),
             autodelete=str(data.get("autodelete", "")),
             message=str(data.get("message", "")),
             success=success_str,
+            port=_optint(data.get("port")),
+            query=_optstr(data.get("query")),
+            payload=_optstr(data.get("payload")),
             raw=dict(data),
         )
 

@@ -73,6 +73,11 @@ class TestValidateDNSQueryMethod:
     def test_accepts_known_types(self, m: str) -> None:
         assert validate_dns_query_method(m) == m.strip().upper()
 
+    def test_accepts_compound_a_aaaa(self) -> None:
+        """Swagger 2.0.0 added 'A/AAAA' as the default - must not be upper-cased."""
+        assert validate_dns_query_method("A/AAAA") == "A/AAAA"
+        assert validate_dns_query_method(" A/AAAA ") == "A/AAAA"
+
     def test_rejects_unknown(self) -> None:
         with pytest.raises(CheckHostValidationError):
             validate_dns_query_method("BOGUS")

@@ -6,7 +6,8 @@ from checkhost._models import CheckCreated, MinResponseINFO, Report
 
 
 class TestMinResponseINFO:
-    def test_roundtrip_from_full_payload(self) -> None:
+    def test_roundtrip_from_legacy_swagger12_payload(self) -> None:
+        """Swagger 1.2.0 shape: flat fields including ``iprange`` and ``zipcode``."""
         payload = {
             "ip": "1.2.3.4",
             "reverse": "host.example",
@@ -14,22 +15,69 @@ class TestMinResponseINFO:
             "country": "Germany",
             "city": "Berlin",
             "zipcode": "10115",
-            "asn": "AS12345",  # extra field stays accessible via .raw
+            "asn": "AS12345",  # legacy string-shaped asn lives on raw only
         }
         info = MinResponseINFO.from_json(payload)
         assert info.ip == "1.2.3.4"
         assert info.reverse == "host.example"
-        assert info.iprange == "1.2.3.0-1.2.3.255"
+        assert info.iprange == "1.2.3.0-1.2.3.255"  # back-compat property
         assert info.country == "Germany"
         assert info.city == "Berlin"
-        assert info.zipcode == "10115"
+        assert info.zipcode == "10115"  # back-compat property (postal_code)
+        assert info.postal_code == "10115"
+        assert info.asn == {}  # legacy string asn doesn't match dict schema
         assert info.raw["asn"] == "AS12345"
+
+    def test_roundtrip_from_swagger20_payload(self) -> None:
+        """Swagger 2.0.0 shape: nested asn/privacy/company/abuse + new top-level fields."""
+        payload = {
+            "ip": "34.36.183.77",
+            "reverse": "77.183.36.34.bc.googleusercontent.com",
+            "country": "United States",
+            "countryCode": "US",
+            "isEu": False,
+            "city": "Kansas City",
+            "continent": "North America",
+            "latitude": 39.09973,
+            "longitude": -94.57857,
+            "timeZone": "America/Chicago",
+            "postalCode": "64101",
+            "subdivision": "Missouri",
+            "currencyCode": "USD",
+            "callingCode": "1",
+            "privacy": {"isHosting": True, "isVpn": False},
+            "asn": {"asn": "AS396982", "name": "Google LLC"},
+            "company": {"name": "Google LLC", "type": "hosting"},
+            "abuse": {"email": "abuse@google.com"},
+            "success": True,
+        }
+        info = MinResponseINFO.from_json(payload)
+        assert info.country_code == "US"
+        assert info.is_eu is False
+        assert info.continent == "North America"
+        assert info.latitude == 39.09973
+        assert info.longitude == -94.57857
+        assert info.time_zone == "America/Chicago"
+        assert info.postal_code == "64101"
+        assert info.zipcode == "64101"  # back-compat alias
+        assert info.subdivision == "Missouri"
+        assert info.currency_code == "USD"
+        assert info.calling_code == "1"
+        assert info.privacy["isHosting"] is True
+        assert info.asn["asn"] == "AS396982"
+        assert info.company["name"] == "Google LLC"
+        assert info.abuse["email"] == "abuse@google.com"
+        assert info.success is True
 
     def test_handles_missing_keys_gracefully(self) -> None:
         info = MinResponseINFO.from_json({"ip": "9.9.9.9"})
         assert info.ip == "9.9.9.9"
         assert info.country == ""
         assert info.zipcode == ""
+        assert info.postal_code == ""
+        assert info.privacy == {}
+        assert info.asn == {}
+        assert info.latitude is None
 
 
 class TestCheckCreated:
@@ -67,6 +115,40 @@ class TestCheckCreated:
         cc = CheckCreated.from_json({"success": False, "uuid": "x"})
         assert cc.is_success is False
         assert cc.success == "failure"
+
+    def test_swagger20_fields_populated(self) -> None:
+        """Live API echoes back region / og-imageURL / port / query / payload."""
+        payload = {
+            "status": 200,
+            "success": True,
+            "target": "1.1.1.1",
+            "method": "udp",
+            "repeatchecks": 0,
+            "region": ["DE", "NL"],
+            "uuid": "abc",
+            "reportURL": "https://check-host.cc/report/abc",
+            "apiURL": "https://api.check-host.cc/report/abc",
+            "og-imageURL": "https://api.check-host.cc/report/abc/og-image",
+            "autodelete": "12-05-2036",
+            "message": "Broadcasted task to all slaves.",
+            "port": 53,
+            "query": None,
+            "payload": "0xdeadbeef",
+        }
+        cc = CheckCreated.from_json(payload)
+        assert cc.region == ["DE", "NL"]
+        assert cc.og_image_url.endswith("/og-image")
+        assert cc.port == 53
+        assert cc.query is None
+        assert cc.payload == "0xdeadbeef"
+
+    def test_missing_optional_fields_default(self) -> None:
+        cc = CheckCreated.from_json({"uuid": "x"})
+        assert cc.region == []
+        assert cc.og_image_url == ""
+        assert cc.port is None
+        assert cc.query is None
+        assert cc.payload is None
 
 
 class TestReportLegacyShape:

@@ -82,6 +82,6 @@ publish_pypi:
     - python3 -m pip install --user --upgrade build twine
     - python3 -m build
     - twine check dist/*
-    - twine upload --non-interactive -u __token__ -p "$PYPI_TOKEN" dist/*
+    - twine upload --non-interactive --skip-existing -u __token__ -p "$PYPI_TOKEN" dist/*
   rules:
     - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+/ && $PYPI_TOKEN

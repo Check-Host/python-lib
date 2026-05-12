@@ -7,11 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-12
+
+Stable release. Aligned with **Check-Host.cc API Swagger 2.0.0** (richer
+`/info` shape, new endpoints, new fields on `CheckCreated`). All
+existing call sites from `0.9.0` keep working - backward-compatible
+properties cover the renamed fields.
+
+### Added
+- `CheckHost.myinfo()` - geolocation + ASN for the caller's own IP
+  (`GET /myinfo`).
+- `CheckHost.info_force(target)` - cache-bypass geolocation lookup
+  (`GET /infoforce/{target}`; accepts IPs only, not hostnames).
+- `CheckHost.country_map(uuid)` / `save_country_map(uuid, path)` -
+  per-country world map (SVG default, PNG optional with low/med/high
+  resolution; `GET /report/{uuid}/country-map`).
+- `MinResponseINFO` now exposes the rich Swagger 2.0.0 fields:
+  `country_code`, `is_eu`, `continent`, `latitude`, `longitude`,
+  `time_zone`, `postal_code`, `subdivision`, `currency_code`,
+  `calling_code`, `privacy`, `asn`, `company`, `abuse`, `success`.
+  Old `zipcode` and `iprange` survive as backward-compatible properties.
+- `CheckCreated` now exposes `region`, `og_image_url`, `port`,
+  `query`, `payload` - all echoed back by the production API since 2.0.0.
+- `DNSType.A_AAAA = "A/AAAA"` constant; validation accepts the
+  compound query method without uppercase-folding it.
+- Swagger 2.0.0 file shipped inside the wheel at `checkhost/swagger.yaml`.
+
+### Changed
+- Project description sharpened to mention all check types and 60+ global
+  locations.
+- `publish_pypi` CI job now passes `--skip-existing` to `twine upload`
+  so an idempotent re-tag (force-move) does not break the pipeline if
+  the file already exists on PyPI.
+
+### Test
+- Unit-test suite grew from 143 to 155 tests (12 new for the new
+  endpoints, model fields, and DNS-type compound).
+- Live integration tests grew from 5 to 8 (covering `myinfo`,
+  `info_force`, `country_map`); all 8 pass against the production API.
+
 ## [0.9.0] - 2026-05-12
 
 First publishable release. Identical surface to the planned `1.0.0`;
 shipped at `0.9.0` first so the GitLab CI publish pipeline and PyPI
-artefact can be smoke-tested without burning the immutable `1.0.0`
+artefact could be smoke-tested without burning the immutable `1.0.0`
 version on PyPI.
 
 ### Added
@@ -46,5 +85,6 @@ This release transparently handles both shapes:
    Some peer libraries assume a flat `{node: [results]}` shape; the SDK
    supports both.
 
-[Unreleased]: https://github.com/Check-Host/python-lib/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/Check-Host/python-lib/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Check-Host/python-lib/releases/tag/v1.0.0
 [0.9.0]: https://github.com/Check-Host/python-lib/releases/tag/v0.9.0
