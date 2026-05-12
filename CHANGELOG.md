@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-05-12
+
+### Removed
+- `CheckHost.info_force()` and the matching tests. The endpoint
+  `/infoforce/{target}` was an artefact of a pre-2.0 Swagger draft and
+  does **not** exist on the production Check-Host API; calls would
+  have returned 404. Use `CheckHost.info()` (`POST /info`) instead.
+
+### Changed
+- Bundled `swagger.yaml` re-synced with the latest 2.0.0 spec the API
+  team is publishing.
+- README points to <https://check-host.cc/docs> as the primary API
+  reference; the bundled Swagger spec is the secondary fallback.
+
 ## [1.0.0] - 2026-05-12
 
 Stable release. Aligned with **Check-Host.cc API Swagger 2.0.0** (richer
@@ -85,6 +99,7 @@ This release transparently handles both shapes:
    Some peer libraries assume a flat `{node: [results]}` shape; the SDK
    supports both.
 
-[Unreleased]: https://github.com/Check-Host/python-lib/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Check-Host/python-lib/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/Check-Host/python-lib/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Check-Host/python-lib/releases/tag/v1.0.0
 [0.9.0]: https://github.com/Check-Host/python-lib/releases/tag/v0.9.0

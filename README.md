@@ -15,9 +15,8 @@ Full API reference: <https://check-host.cc/docs>.
 ## Highlights
 
 - **Zero runtime dependencies** — built on top of `urllib.request`.
-- **Full Swagger 2.0.0 parity** — every endpoint covered, including the
-  new `/myinfo`, `/infoforce/{target}`, `/report/{uuid}/og-image` and
-  `/report/{uuid}/country-map`.
+- **Full Swagger 2.0.0 parity** — every endpoint covered, including
+  `/myinfo`, `/report/{uuid}/og-image` and `/report/{uuid}/country-map`.
 - **Type hints throughout** with a [PEP 561](https://peps.python.org/pep-0561/)
   `py.typed` marker.
 - **POST-based requests** — no URL-encoding pitfalls.
@@ -135,11 +134,7 @@ locations = ch.locations()
 #### Host info (geolocation / ASN)
 
 ```python
-# Cached lookup (90 day TTL)
 info = ch.info("check-host.cc")
-
-# Force a fresh, uncached lookup (IPs only)
-fresh = ch.info_force("1.1.1.1")
 ```
 
 #### WHOIS / RDAP lookup
@@ -309,7 +304,6 @@ ch.save_country_map(task.uuid, "./status.svg")
 | `ch.myinfo()` | `GET /myinfo` | `MinResponseINFO` |
 | `ch.locations()` | `GET /locations` | `dict[str, Any]` |
 | `ch.info(target)` | `POST /info` | `MinResponseINFO` |
-| `ch.info_force(target)` | `GET /infoforce/{target}` | `MinResponseINFO` |
 | `ch.whois(target)` | `POST /whois` | `dict[str, Any]` |
 | `ch.ping(target, *, region=None, repeat_checks=0, timeout=None)` | `POST /ping` | `CheckCreated` |
 | `ch.dns(target, *, query_method="A", region=None)` | `POST /dns` | `CheckCreated` |

@@ -120,21 +120,6 @@ class CheckHost:
             raise CheckHostValidationError(f"Unexpected /info response type: {type(data).__name__}")
         return MinResponseINFO.from_json(data)
 
-    def info_force(self, target: str) -> MinResponseINFO:
-        """Force a fresh geolocation lookup (``GET /infoforce/{target}``).
-
-        Same response shape as :meth:`info` but bypasses the local 90-day
-        geo cache and re-queries upstream providers. Use sparingly.
-        """
-        target = validate_target(target)
-        path = f"/infoforce/{urllib.parse.quote(target, safe='')}"
-        data = self._client.get(path)
-        if not isinstance(data, dict):
-            raise CheckHostValidationError(
-                f"Unexpected /infoforce response type: {type(data).__name__}"
-            )
-        return MinResponseINFO.from_json(data)
-
     def myinfo(self) -> MinResponseINFO:
         """Geolocation + ASN for the caller's own IP (``GET /myinfo``).
 

@@ -52,14 +52,6 @@ def test_live_myinfo(client: CheckHost) -> None:
     assert isinstance(info.is_eu, bool)
 
 
-def test_live_info_force(client: CheckHost) -> None:
-    # /infoforce only accepts IPs (not hostnames) - it bypasses hostname
-    # resolution and calls IPLocate directly.
-    info = client.info_force("1.1.1.1")
-    assert info.ip == "1.1.1.1"
-    assert info.country
-
-
 def test_live_ping_and_poll(client: CheckHost) -> None:
     task = client.ping("1.1.1.1", region=[Continent.EUROPE], repeat_checks=1)
     assert task.uuid

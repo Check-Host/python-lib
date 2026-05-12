@@ -105,8 +105,8 @@ paths:
                 $ref: '#/components/schemas/MyIpResponse'
               example:
                 status: 200
-                message: "Your current IP is: 45.95.55.230"
-                ip: "45.95.55.230"
+                message: "Your current IP is: 34.36.183.77"
+                ip: "34.36.183.77"
                 success: true
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/ServerError' }
@@ -214,22 +214,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '429': { $ref: '#/components/responses/RateLimited' }
-        '500': { $ref: '#/components/responses/ServerError' }
-
-  /infoforce/{target}:
-    get:
-      tags: [Utilities]
-      operationId: infoForceFresh
-      summary: Force a fresh geolocation lookup (cache bypass)
-      description: Identical response to `/info/{target}` but skips the local 90-day geo cache and re-queries upstream providers. Use sparingly — counts against external API quota.
-      parameters:
-        - { name: target, in: path, required: true, schema: { type: string }, example: "check-host.cc" }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/InfoResponse' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /whois:
@@ -861,8 +845,8 @@ components:
       type: object
       properties:
         status:  { type: integer, example: 200 }
-        message: { type: string, example: "Your current IP is: 45.95.55.230" }
-        ip:      { type: string, example: "45.95.55.230" }
+        message: { type: string, example: "Your current IP is: 34.36.183.77" }
+        ip:      { type: string, example: "34.36.183.77" }
         success: { type: boolean, example: true }
 
     InfoResponse:

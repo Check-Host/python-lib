@@ -10,9 +10,8 @@ from typing import Any
 class MinResponseINFO:
     """Geolocation / ISP / privacy / abuse data for a host or IP.
 
-    Returned by :meth:`CheckHost.info`, :meth:`CheckHost.info_force`, and
-    :meth:`CheckHost.myinfo` (``POST /info``, ``GET /infoforce/{target}``,
-    ``GET /myinfo``).
+    Returned by :meth:`CheckHost.info` and :meth:`CheckHost.myinfo`
+    (``POST /info`` and ``GET /myinfo``).
 
     Aligned with Swagger 2.0.0. Backwards-compatible fields ``iprange`` and
     ``zipcode`` are kept (they fall back to ``postal_code`` / empty when the

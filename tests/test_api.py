@@ -106,24 +106,6 @@ class TestUtilityMethods:
         assert transport.last_call["url"].endswith("/myinfo")
         assert transport.last_call["method"] == "GET"
 
-    def test_info_force_endpoint(self, transport: FakeTransport) -> None:
-        transport.queue_json(
-            {"ip": "1.1.1.1", "country": "USA", "countryCode": "US", "success": True}
-        )
-        with CheckHost() as ch:
-            info = ch.info_force("1.1.1.1")
-        assert info.ip == "1.1.1.1"
-        assert info.country_code == "US"
-        assert transport.last_call["url"].endswith("/infoforce/1.1.1.1")
-        assert transport.last_call["method"] == "GET"
-
-    def test_info_force_url_encodes_target(self, transport: FakeTransport) -> None:
-        transport.queue_json({"ip": "1.2.3.4", "success": True})
-        with CheckHost() as ch:
-            ch.info_force("host with space")
-        # Space encoded as %20 (urllib's quote with safe='') keeps non-reserved chars.
-        assert "%20" in transport.last_call["url"]
-
 
 class TestMonitoringMethods:
     def test_ping_serialises_options(self, transport: FakeTransport) -> None:
