@@ -21,10 +21,7 @@ variables:
 
 .python_setup: &python_setup
   - python3 --version
-  - >-
-    python3 -m pip --version 2>/dev/null
-    || (curl -sSL --retry 3 https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
-        && python3 /tmp/get-pip.py --user)
+  - if ! python3 -m pip --version >/dev/null 2>&1; then curl -sSL --retry 3 https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && python3 /tmp/get-pip.py --user; fi
   - export PATH="$HOME/.local/bin:$PATH"
   - python3 -m pip install --user --upgrade pip wheel
 
