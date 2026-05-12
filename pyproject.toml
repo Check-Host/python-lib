@@ -60,7 +60,7 @@ dev = [
 Homepage = "https://check-host.cc"
 Documentation = "https://github.com/Check-Host/python-lib"
 Repository = "https://github.com/Check-Host/python-lib"
-Source = "https://git.check-host.cc/Check-Host/python-lib"
+Source = "https://git.check-host.eu/Check-Host/python-lib"
 Issues = "https://github.com/Check-Host/python-lib/issues"
 Changelog = "https://github.com/Check-Host/python-lib/blob/main/CHANGELOG.md"
 

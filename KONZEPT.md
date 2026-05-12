@@ -25,7 +25,7 @@ Eine Python-SDK für check-host.cc, die:
 | License | **Apache-2.0** | Aligned mit `go-lib` + `CheckHost4J` (Mehrheit), Industriestandard fuer Libraries |
 | Python-Version | **3.10+** | Erlaubt `slots=True`, `\|`-Union-Syntax, `kw_only`. Andere Libs zielen auf moderne Stacks (Java 17+, Node 18+, PHP 8.1+) |
 | Build-Backend | `hatchling` | Modern, simpel, kein Setuptools-Cruft |
-| Repository | `git.check-host.cc/Check-Host/python-lib` -> Mirror `github.com/Check-Host/python-lib` | Wie alle anderen Libs |
+| Repository | `git.check-host.eu/Check-Host/python-lib` -> Mirror `github.com/Check-Host/python-lib` | Wie alle anderen Libs |
 
 ## 3. Modulstruktur
 
@@ -413,7 +413,7 @@ mirror_to_github:
 
 ## 13. Veroeffentlichungs-Workflow
 
-1. Entwicklung auf `git.check-host.cc/Check-Host/python-lib`
+1. Entwicklung auf `git.check-host.eu/Check-Host/python-lib`
 2. MRs reviewen, mergen
 3. Tag `v1.0.0` auf `main` setzen
 4. GitLab CI: lint -> test -> build -> mirror push -> github
@@ -540,7 +540,7 @@ with CheckHost() as ch:
 
 ## 19. Naechste Schritte (nach Konzept-Freigabe)
 
-1. Repo `python-lib` auf `git.check-host.cc/Check-Host` anlegen
+1. Repo `python-lib` auf `git.check-host.eu/Check-Host` anlegen
 2. Skeleton: `pyproject.toml`, `LICENSE`, `.gitignore`, `README.md`
 3. Implementierung in der Reihenfolge: `_exceptions` -> `_models` -> `_validation` -> `regions` -> `_client` -> `api` -> `__init__`
 4. Unit-Tests parallel zur Implementierung

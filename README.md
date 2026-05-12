@@ -210,7 +210,7 @@ automatically and TLS verification follows the system trust store.
 ## Development
 
 ```bash
-git clone https://git.check-host.cc/Check-Host/python-lib
+git clone https://git.check-host.eu/Check-Host/python-lib
 cd python-lib
 pip install -e ".[dev]"
 pytest
