@@ -60,19 +60,20 @@ build:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
 
-# Primary publish path is github.com/Check-Host/python-lib's Trusted
-# Publishing workflow (.github/workflows/publish.yml). It triggers when the
-# GitLab native push mirror replicates a `v*` tag to GitHub. No PyPI token
-# is stored anywhere - PyPI verifies the GitHub Action via OIDC.
+# Publishes to PyPI via the masked CI variable PYPI_TOKEN (project-scoped
+# API token for check-host-api). Triggers on every annotated tag matching
+# the semver pattern, and only when the token is actually set so feature
+# branches and unconfigured forks never accidentally try to upload.
 #
-# The job below is a fallback for publishing directly from GitLab CI. It
-# needs a CI/CD variable PYPI_TOKEN (PyPI API token, scope "Project:
-# check-host-api"). Disable it once Trusted Publishing is wired up.
+# To switch to Trusted Publishing later: configure a pending publisher on
+# pypi.org pointing at this GitLab project, then drop the PYPI_TOKEN
+# variable and swap the script for `id-token`-based OIDC.
 publish_pypi:
   stage: publish
   script:
-    - pip install build twine
+    - pip install --upgrade build twine
     - python -m build
+    - twine check dist/*
     - twine upload --non-interactive -u __token__ -p "$PYPI_TOKEN" dist/*
   rules:
-    - if: $CI_COMMIT_TAG && $PYPI_TOKEN
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+/ && $PYPI_TOKEN
