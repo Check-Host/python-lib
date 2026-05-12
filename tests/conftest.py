@@ -143,6 +143,23 @@ class FakeTransport:
         return json.loads(body.decode("utf-8"))
 
 
+@pytest.fixture(autouse=True)
+def _clear_apikey_env(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ensure unit tests run with no ambient ``CHECK_HOST_API_KEY``.
+
+    Without this, CI environments (which export the masked GitLab
+    variable to every job) make unit tests like ``test_no_apikey_when_none``
+    pick up a real key from the environment and fail. ``live`` tests opt
+    out so they can use the key when present.
+    """
+    if request.node.get_closest_marker("live"):
+        return
+    monkeypatch.delenv("CHECK_HOST_API_KEY", raising=False)
+
+
 @pytest.fixture
 def transport() -> Iterator[FakeTransport]:
     """Patch ``urllib.request.urlopen`` for the duration of the test."""
