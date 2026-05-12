@@ -4,9 +4,9 @@
 # this pipeline.
 #
 # The project runner ("Check-Host-Master") uses the shell executor on a
-# host that does not have Python preinstalled, so each job creates an
-# isolated venv via the system python3 first. The `image:` keyword is
-# intentionally absent because shell executors ignore it.
+# host that has python3 but no python3-venv and no `pip` binary in PATH.
+# We bootstrap pip via get-pip.py if needed and install everything into
+# ~/.local with `pip install --user`.
 
 stages:
   - lint
@@ -17,18 +17,22 @@ stages:
 variables:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PIP_NO_PYTHON_VERSION_WARNING: "1"
+  PIP_NO_INPUT: "1"
 
 .python_setup: &python_setup
   - python3 --version
-  - python3 -m venv .venv
-  - . .venv/bin/activate
-  - python -m pip install --upgrade pip wheel
+  - >-
+    python3 -m pip --version 2>/dev/null
+    || (curl -sSL --retry 3 https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+        && python3 /tmp/get-pip.py --user)
+  - export PATH="$HOME/.local/bin:$PATH"
+  - python3 -m pip install --user --upgrade pip wheel
 
 lint:
   stage: lint
   script:
     - *python_setup
-    - pip install -e ".[dev]"
+    - python3 -m pip install --user -e ".[dev]"
     - ruff check .
     - ruff format --check .
     - mypy checkhost
@@ -41,8 +45,8 @@ test:
   stage: test
   script:
     - *python_setup
-    - pip install -e ".[dev]"
-    - pytest -m "not live" --cov=checkhost --cov-report=term --cov-report=xml
+    - python3 -m pip install --user -e ".[dev]"
+    - python3 -m pytest -m "not live" --cov=checkhost --cov-report=term --cov-report=xml
   coverage: '/(?i)total.*\s+(\d+%)$/'
   artifacts:
     when: always
@@ -59,8 +63,8 @@ build:
   stage: build
   script:
     - *python_setup
-    - pip install build
-    - python -m build
+    - python3 -m pip install --user build
+    - python3 -m build
   artifacts:
     paths:
       - dist/
@@ -73,16 +77,12 @@ build:
 # API token for check-host-api). Triggers on every annotated tag matching
 # the semver pattern, and only when the token is actually set so feature
 # branches and unconfigured forks never accidentally try to upload.
-#
-# To switch to Trusted Publishing later: configure a pending publisher on
-# pypi.org pointing at this GitLab project, then drop the PYPI_TOKEN
-# variable and swap the script for `id-token`-based OIDC.
 publish_pypi:
   stage: publish
   script:
     - *python_setup
-    - pip install --upgrade build twine
-    - python -m build
+    - python3 -m pip install --user --upgrade build twine
+    - python3 -m build
     - twine check dist/*
     - twine upload --non-interactive -u __token__ -p "$PYPI_TOKEN" dist/*
   rules:
