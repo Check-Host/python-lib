@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-05-12
+## [0.9.0] - 2026-05-12
+
+First publishable release. Identical surface to the planned `1.0.0`;
+shipped at `0.9.0` first so the GitLab CI publish pipeline and PyPI
+artefact can be smoke-tested without burning the immutable `1.0.0`
+version on PyPI.
 
 ### Added
 - Initial release.
@@ -41,5 +46,5 @@ This release transparently handles both shapes:
    Some peer libraries assume a flat `{node: [results]}` shape; the SDK
    supports both.
 
-[Unreleased]: https://github.com/Check-Host/python-lib/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/Check-Host/python-lib/releases/tag/v1.0.0
+[Unreleased]: https://github.com/Check-Host/python-lib/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Check-Host/python-lib/releases/tag/v0.9.0
