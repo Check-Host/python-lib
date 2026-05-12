@@ -1,0 +1,151 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "check-host-api"
+dynamic = ["version"]
+description = "A lightweight, zero-dependency Python SDK for the Check-Host.cc API."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Check-Host", email = "dev@check-host.cc" },
+]
+keywords = [
+    "check-host",
+    "network",
+    "diagnostics",
+    "ping",
+    "mtr",
+    "dns",
+    "tcp",
+    "udp",
+    "http",
+    "whois",
+    "monitoring",
+    "api",
+    "sdk",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Networking :: Monitoring",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "build>=1.0",
+]
+
+[project.urls]
+Homepage = "https://check-host.cc"
+Documentation = "https://github.com/Check-Host/python-lib"
+Repository = "https://github.com/Check-Host/python-lib"
+Source = "https://git.check-host.cc/Check-Host/python-lib"
+Issues = "https://github.com/Check-Host/python-lib/issues"
+Changelog = "https://github.com/Check-Host/python-lib/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "checkhost/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["checkhost"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/checkhost",
+    "/tests",
+    "/examples",
+    "/swagger.yaml",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/pyproject.toml",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "RUF", # ruff-specific
+    "SIM", # simplify
+    "C4",  # flake8-comprehensions
+    "PT",  # pytest style
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+files = ["checkhost"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "live: integration tests that hit the live Check-Host.cc API (deselect with '-m \"not live\"')",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["checkhost"]
+omit = ["checkhost/_version.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

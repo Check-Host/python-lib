@@ -1,0 +1,678 @@
+openapi: 3.0.0
+info:
+  title: Check-Host.cc API
+  description: >
+    Welcome to the Check-Host.cc API documentation. 
+    
+    Our comprehensive API empowers developers and system administrators to perform remote network diagnostics from multiple global locations. You can seamlessly integrate PING, MTR, DNS, HTTP, TCP, and UDP checks into your infrastructure to monitor connectivity, measure latency, and verify service availability worldwide.
+    
+    **Note on Rate Limiting:** We employ intelligent, globally distributed rate limiting to ensure high availability and prevent abuse. Limits are dynamically applied based on your IP address and the target host. For higher limits and production workloads, please utilize an API key.
+  version: 1.2.0
+  contact:
+    name: API Support
+    url: https://check-host.cc
+    email: dev@check-host.cc
+
+servers:
+  - url: https://api.check-host.cc
+    description: Production Server
+  - url: https://check-host.cc/api
+    description: DEV Server
+
+paths:
+  /info:
+    post:
+      summary: Host/IP Information
+      description: Retrieves detailed geolocation data, ISP information, and ASN (Autonomous System Number) details for a specified hostname or IP address. Ideal for identifying traffic origins and datacenter locations.
+      tags: [Utilities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TargetRequest'
+      responses:
+        '200':
+          description: Geolocation and ISP details retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MinResponseINFO'
+        '400':
+          description: Problem with your input parameters. Please check your payload.
+        '429':
+          description: Ratelimit reached. Please provide an API key or slow down your requests.
+        '500':
+          description: Internal server error. Please try again later.
+
+  /whois:
+    post:
+      summary: WHOIS Lookup
+      description: Performs a WHOIS registry lookup for a domain name or IP block to retrieve ownership information, registration dates, expiration details, and registrar contacts.
+      tags: [Utilities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TargetRequest'
+      responses:
+        '200':
+          description: WHOIS record returned successfully.
+        '400':
+          description: Problem with your input parameters.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /info/{target}:
+    get:
+      summary: Host/IP Info (GET)
+      description: Returns geolocation and ISP data via a GET request. **Note:** For complex or URL-encoded targets, using the POST `/info` endpoint is highly recommended.
+      tags: [Utilities]
+      parameters:
+        - name: target
+          in: path
+          required: true
+          description: The IP or Hostname to inspect.
+          schema:
+            type: string
+            default: check-host.cc
+      responses:
+        '200':
+          description: Current results of the Info check.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MinResponseINFO'
+        '400':
+          description: Invalid input target.
+        '404':
+          description: Problem with parsing your input. Use POST instead.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /whois/{target}:
+    get:
+      summary: Host/IP WHOIS (GET)
+      description: Retrieves WHOIS registry information via a GET request. **Note:** For complex targets, using the POST `/whois` endpoint is highly recommended.
+      tags: [Utilities]
+      parameters:
+        - name: target
+          in: path
+          required: true
+          description: The IP or Hostname to query.
+          schema:
+            type: string
+            default: check-host.cc
+      responses:
+        '200':
+          description: Current results of the Whois check.
+        '400':
+          description: Invalid input target.
+        '404':
+          description: Problem with parsing your input. Use POST instead.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /myip:
+    get:
+      summary: Get Client IP
+      description: A lightweight endpoint to return the requesting client's public IPv4 or IPv6 address. Primarily used for frontend client identification.
+      tags: [Utilities]
+      responses:
+        '200':
+          description: Your public IP address.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /locations:
+    get:
+      summary: Available Global Nodes
+      description: Fetches a dynamic list of all currently active monitoring nodes across the globe. Use these identifiers in the `region` array of monitoring requests to target specific countries or datacenters.
+      tags: [Utilities]
+      responses:
+        '200':
+          description: List of all operational locations.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /ping:
+    post:
+      summary: ICMP Ping Check
+      description: Dispatches ICMP echo requests to the target from various global nodes to accurately measure network latency, jitter, and packet loss.
+      tags: [Monitoring]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitoringRequest'
+      responses:
+        '200':
+          description: Ping check started and UUID generated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCreated'
+        '400':
+          description: Invalid payload configuration.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /dns:
+    post:
+      summary: DNS Propagation Check
+      description: Queries global nameservers for specific DNS records (A, AAAA, MX, TXT, SRV, etc.) to verify domain configuration, TTL values, and global DNS propagation status.
+      tags: [Monitoring]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DNSTargetRequest'
+      responses:
+        '200':
+          description: DNS check started successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCreated'
+        '400':
+          description: Invalid payload configuration.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /tcp:
+    post:
+      summary: TCP Port Check
+      description: Attempts to establish a 3-way TCP handshake on a specific destination port. Highly useful for verifying if services (e.g., SSH on 22, SMTP on 25, or custom apps) are actively accepting connections globally.
+      tags: [Monitoring]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/MonitoringRequest'
+                - type: object
+                  properties:
+                    port:
+                      type: integer
+                      description: The destination TCP port to check (1-65535).
+                      example: 443
+      responses:
+        '200':
+          description: TCP port check initiated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCreated'
+        '400':
+          description: Invalid payload or port out of range.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /udp:
+    post:
+      summary: UDP Port Check
+      description: Sends UDP packets to a specified target and port to verify service responsiveness. Because UDP is connectionless, establishing service availability often requires sending a specific protocol payload. If no payload is provided, a generic test packet is dispatched.
+      tags: [Monitoring]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/MonitoringRequest'
+                - type: object
+                  properties:
+                    port:
+                      type: integer
+                      description: The destination UDP port to check (1-65535).
+                      example: 53
+                    payload:
+                      type: string
+                      description: (Optional) Custom hex or string payload to send to the UDP service. Leave empty for auto-detection or generic packets.
+                      nullable: true
+            example:
+              apikey: null,
+              target: "1.1.1.1"
+              port: 53
+              repeatchecks: 0
+              region: ["EU"]
+      responses:
+        '200':
+          description: UDP port check initiated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCreated'
+        '400':
+          description: Invalid payload or port out of range.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /http:
+    post:
+      summary: HTTP Performance Check
+      description: Executes an HTTP/HTTPS request to the target to measure Time-to-First-Byte (TTFB), overall response latency, HTTP status codes, and headers from worldwide locations.
+      tags: [Monitoring]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitoringRequest'
+      responses:
+        '200':
+          description: HTTP check started successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCreated'
+        '400':
+          description: Invalid payload. Check protocol format (http:// or https://).
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /mtr:
+    post:
+      summary: MTR (My Traceroute)
+      description: Initiates an MTR diagnostic, providing a detailed hop-by-hop analysis of the network path. It combines the functions of ping and traceroute to isolate routing issues, packet loss, and latency spikes across internet backbones.
+      tags: [Monitoring]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MTRMonitoringRequest'
+      responses:
+        '200':
+          description: MTR task deployed to nodes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCreated'
+        '400':
+          description: Invalid payload.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /ping/{target}:
+    get:
+      summary: ICMP Ping Check (GET)
+      description: Sends ICMP echo requests via GET parameter. **Note:** URL-encoding can cause issues. POST is highly recommended.
+      tags: [Monitoring]
+      parameters:
+        - name: target
+          in: path
+          required: true
+          description: The IP or Hostname to ping.
+          schema:
+            type: string
+            default: check-host.cc
+      responses:
+        '200':
+          description: Ping test started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCreated'
+        '400':
+          description: Invalid input parameters.
+        '404':
+          description: Routing error due to URL encoding. Use POST.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /dns/{target}/{methoad}:
+    get:
+      summary: DNS Propagation Check (GET)
+      description: Queries DNS records via GET parameter. Defaults to 'A' record if no method is supplied.
+      tags: [Monitoring]
+      parameters:
+        - name: target
+          in: path
+          required: true
+          description: The Hostname to query.
+          schema:
+            type: string
+            default: check-host.cc
+        - name: methoad
+          in: path
+          required: true
+          description: DNS record type (e.g., A, AAAA, MX, TXT).
+          schema:
+            type: string
+            default: A
+      responses:
+        '200':
+          description: DNS check started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCreated'
+        '400':
+          description: Invalid input parameters.
+        '404':
+          description: Routing error. Use POST.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /tcp/{target}/{port}:
+    get:
+      summary: TCP Port Check (GET)
+      description: Initiates a TCP handshake via GET parameter. Defaults to port 80 if omitted.
+      tags: [Monitoring]
+      parameters:
+        - name: target
+          in: path
+          required: true
+          description: The IP or Hostname to check.
+          schema:
+            type: string
+            default: check-host.cc
+        - name: port
+          in: path
+          required: true
+          description: Target TCP port (0-65535).
+          schema:
+            type: integer
+            default: 80
+            minimum: 0
+            maximum: 65535
+      responses:
+        '200':
+          description: TCP check started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCreated'
+        '400':
+          description: Invalid port or target.
+        '404':
+          description: Routing error. Use POST.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+  /report/{uuid}:
+    get:
+      summary: Retrieve Check Results
+      description: Fetches the compiled report and real-time statuses from a previously initiated monitoring check (Ping, TCP, HTTP, etc.) using its unique UUID. Note; Gathering data from global nodes takes a few seconds; you may need to poll this endpoint until all nodes return a status.
+      tags: [Monitoring]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          description: The UUID returned by the initial check request.
+          schema:
+            type: string
+            default: c0b4b0e3-aed7-4ae2-9f53-7bac879697cb
+      responses:
+        '200':
+          description: Complete or partial results of the check.
+        '400':
+          description: Check not found or invalid UUID format.
+        '404':
+          description: Missing UUID parameter.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+  /report/{uuid}/og-image:
+    get:
+      summary: Retrieve Check Image
+      description: >
+        Generates a real-time, high-fidelity geographic status map for a specific check report. 
+        This endpoint returns a dynamic Open Graph (OG) image intended for social media previews 
+        (Twitter, Discord, Slack) and internal monitoring dashboards.
+        
+        ### Functional Logic:
+        * **Data Aggregation:** Pulls the latest telemetry from all 50+ global nodes associated with the report UUID.
+        * **Regional Mapping:** Nodes are grouped into six continental regions: North America (NA), Europe (EU), Asia (AS), Africa (AF), South America (SA), and Oceania (OC).
+        * **Status Colorization:** Each continent is color-coded based on the failure ratio of its reporting nodes:
+          * **Emerald Green (#00FF9F):** Operational (90% - 100% success rate).
+          * **Amber (#FFB020):** Partial Outage (50% - 89% success rate).
+          * **Red (#FF4949):** Major Outage (below 50% success rate).
+          * **Dark Slate (#183840):** Inactive/No nodes available.
+        
+        ### Technical Specs:
+        * **Format:** Returns a `PNG-24` image.
+        * **Dimensions:** 1200 x 630 pixels (standard OG format).
+        * **Performance:** Served with a `Cache-Control` header for 24-hour edge caching.
+        * **Privacy:** Static rendering; contains zero tracking scripts or external dependencies.
+      tags: [Monitoring]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          description: The UUID returned by the initial check request.
+          schema:
+            type: string
+            default: c0b4b0e3-aed7-4ae2-9f53-7bac879697cb
+      responses:
+        '200':
+          description: Dynamic PNG map generated successfully.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Check not found or invalid UUID format.
+        '404':
+          description: Missing UUID parameter/Not found.
+        '429':
+          description: Ratelimit reached.
+        '500':
+          description: Internal server error.
+
+components:
+  schemas:
+    TargetRequest:
+      type: object
+      required: [target]
+      properties:
+        apikey:
+          type: string
+          description: Your API access key. Leave null for public endpoints.
+          nullable: true
+          example: null
+        target:
+          type: string
+          description: The hostname (e.g., example.com) or IP address to check.
+          example: "check-host.cc"
+
+    DNSTargetRequest:
+      type: object
+      required: [target]
+      properties:
+        apikey:
+          type: string
+          description: Your API access key. Leave null for public endpoints.
+          nullable: true
+          example: null
+        target:
+          type: string
+          description: The hostname (e.g., example.com) to resolve.
+          example: "check-host.cc"
+        querymethod:
+          type: string
+          description: Type of DNS record you want to fetch.
+          example: "A"
+          enum: [A, AAAA, NS, MD, MF, CNAME, SOA, MB, MG, MR, NULL, WKS, PTR, HINFO, MINFO, MX, TXT, SRV, EDNS, SPF, AXFR, MAILB, MAILA, ANY, CAA, DNSKEY]
+        region:
+          type: array
+          items:
+            type: string
+          description: List of specific Node names (e.g., 'DE-NBG-Hetzner') or ISO Country Codes (e.g., 'DE', 'PL'). Continental targeting (e.g., 'EU') is also supported but cannot be mixed with specific nodes.
+          example: ["DE"]
+
+    MonitoringRequest:
+      type: object
+      required: [target]
+      properties:
+        apikey:
+          description: (Optional) Your API access key to bypass standard rate limits.
+          type: string
+          nullable: true
+          example: null
+        target:
+          type: string
+          description: The target hostname or IP address.
+          example: "1.1.1.1"
+        repeatchecks:
+          type: integer
+          description: Number of repeated probes to perform per node for higher accuracy (Live Check). Set to 0 for standard checks.
+          nullable: true
+          default: 0
+          minimum: 0
+          maximum: 120
+          example: 0
+        region:
+          type: array
+          items:
+            type: string
+          description: List of specific Node names, Country Codes, or Continents to filter testing locations.
+          example: ["EU"]
+        timeout:
+          type: integer
+          description: (Currently disabled) Connection timeout threshold in seconds.
+          example: 5
+
+    MTRMonitoringRequest:
+      type: object
+      required: [target]
+      properties:
+        apikey:
+          description: (Optional) Your API access key.
+          type: string
+          nullable: true
+          example: null
+        target:
+          type: string
+          description: The destination hostname or IP for the traceroute.
+          example: "1.1.1.1"
+        repeatchecks:
+          type: integer
+          description: Number of packets sent per hop. Higher numbers increase accuracy but take longer to process.
+          nullable: true
+          default: 10
+          minimum: 3
+          maximum: 30
+          example: 5
+        forceIPversion:
+          type: integer
+          description: (Optional) Force resolution over IPv4 (4) or IPv6 (6). Note that not all slaves support IPv6 routing.
+          example: null
+          default: null
+        forceProtocol:
+          type: string
+          description: (Optional) By default, MTR uses ICMP packets. You can switch the protocol to UDP or TCP to bypass certain firewalls.
+          example: null
+        region:
+          type: array
+          items:
+            type: string
+          description: Target specific nodes or regions to originate the MTR from.
+          example: ["EU"]
+
+    MinResponseINFO:
+       type: object
+       properties:
+        ip:
+           type: string
+           description: The resolved public IPv4 or IPv6 address.
+           example: 95.173.128.89
+        reverse:
+           type: string
+           description: The Reverse DNS (rDNS/PTR) record of the IP.
+           example: check-host.cn
+        iprange:
+           type: string
+           description: The allocated IP block/subnet that the IP resides in.
+           example: 95.173.128.0-95.173.128.255
+        country:
+           type: string
+           description: The physical country where the IP is geolocated.
+           example: Russian Federation
+        city:
+           type: string
+           description: The physical city where the IP is geolocated.
+           example: Podol'sk
+        zipcode:
+           type: string
+           description: The postal code of the geolocation.
+           example: 142108
+
+    CheckCreated:
+       type: object
+       properties:
+        status:
+           type: integer
+           description: The HTTP status code of your submission.
+           example: 200
+        target:
+           type: string
+           description: The sanitized target that is being checked.
+           example: check-host.cc
+        method:
+           type: string
+           description: The internal method type identifier (e.g., ping, tcp, udp).
+           example: ping
+        repeatchecks:
+           type: integer
+           description: The confirmed amount of repeated checks to be executed per node.
+           example: 0
+        uuid:
+           type: string
+           description: The unique identifier for this check session. Use this UUID on the `/report/{uuid}` endpoint to fetch results.
+           example: 17814a50-86c1-49c8-8196-395e10ee2c9c
+        reportURL:
+           type: string
+           description: The public frontend link where the visual report can be viewed.
+           example: https://check-host.cc/report/17814a50-86c1-49c8-8196-395e10ee2c9c
+        apiURL:
+           type: string
+           description: The API endpoint to poll the JSON response for this specific check.
+           example: https://api.check-host.cc/report/17814a50-86c1-49c8-8196-395e10ee2c9c
+        autodelete:
+           type: string
+           description: Timestamp indicating when the report will be automatically purged from the database.
+           example: 01-01-2039
+        message:
+           type: string
+           description: Server execution note.
+           example: Broadcasted task to all slaves. Will take 1-2 seconds.
+        success:
+           type: string
+           description: Overall status of your request execution.
+           example: success

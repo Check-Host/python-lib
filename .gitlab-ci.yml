@@ -1,0 +1,83 @@
+stages:
+  - lint
+  - test
+  - build
+  - mirror
+  - publish
+
+default:
+  image: python:3.12-slim
+  before_script:
+    - pip install --upgrade pip
+
+lint:
+  stage: lint
+  script:
+    - pip install -e ".[dev]"
+    - ruff check .
+    - ruff format --check .
+    - mypy checkhost
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+test:
+  stage: test
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13"]
+  image: python:${PYTHON_VERSION}-slim
+  script:
+    - pip install -e ".[dev]"
+    - pytest -m "not live" --cov=checkhost --cov-report=term --cov-report=xml
+  coverage: '/(?i)total.*\s+(\d+%)$/'
+  artifacts:
+    when: always
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+build:
+  stage: build
+  script:
+    - pip install build
+    - python -m build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+mirror_to_github:
+  stage: mirror
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache git
+  script:
+    - test -n "$GH_TOKEN" || (echo "GH_TOKEN missing"; exit 1)
+    - test -n "$GH_USER"  || (echo "GH_USER missing"; exit 1)
+    - git config --global user.email "ci@check-host.cc"
+    - git config --global user.name  "Check-Host CI"
+    - git clone --mirror "$CI_REPOSITORY_URL" mirror
+    - cd mirror
+    - git push --mirror "https://${GH_USER}:${GH_TOKEN}@github.com/Check-Host/python-lib.git"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+publish_pypi:
+  stage: publish
+  script:
+    - pip install build twine
+    - python -m build
+    - twine upload --non-interactive -u __token__ -p "$PYPI_TOKEN" dist/*
+  rules:
+    - if: $CI_COMMIT_TAG
