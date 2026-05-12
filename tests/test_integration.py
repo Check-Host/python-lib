@@ -63,11 +63,12 @@ def test_live_info_force(client: CheckHost) -> None:
 def test_live_ping_and_poll(client: CheckHost) -> None:
     task = client.ping("1.1.1.1", region=[Continent.EUROPE], repeat_checks=1)
     assert task.uuid
-    # Be polite: don't poll faster than 1Hz
-    time.sleep(2.0)
+    # API caps polling on /report at ~1Hz, so the minimum interval is
+    # clamped to 1.0s by wait_for_report regardless of what we ask.
+    time.sleep(1.0)
     report = client.wait_for_report(
         task.uuid,
-        interval=1.5,
+        interval=1.0,
         max_wait=20.0,
         require_complete=False,
     )
@@ -78,13 +79,13 @@ def test_live_ping_and_poll(client: CheckHost) -> None:
 
 def test_live_og_image(client: CheckHost) -> None:
     task = client.ping("1.1.1.1", region=[Continent.EUROPE])
-    time.sleep(2.0)
+    time.sleep(1.0)
     image = client.og_image(task.uuid)
     assert image.startswith(b"\x89PNG"), "expected PNG magic header"
 
 
 def test_live_country_map_svg(client: CheckHost) -> None:
     task = client.ping("1.1.1.1", region=[Continent.EUROPE])
-    time.sleep(2.0)
+    time.sleep(1.0)
     svg = client.country_map(task.uuid)
     assert b"<svg" in svg[:200]
