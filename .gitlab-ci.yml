@@ -2,6 +2,11 @@
 # push mirror (Settings -> Repository -> Mirroring repositories), not by a
 # CI job. The mirror runs server-side on every push and is independent of
 # this pipeline.
+#
+# The project runner ("Check-Host-Master") uses the shell executor on a
+# host that does not have Python preinstalled, so each job creates an
+# isolated venv via the system python3 first. The `image:` keyword is
+# intentionally absent because shell executors ignore it.
 
 stages:
   - lint
@@ -9,14 +14,20 @@ stages:
   - build
   - publish
 
-default:
-  image: python:3.12-slim
-  before_script:
-    - pip install --upgrade pip
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_PYTHON_VERSION_WARNING: "1"
+
+.python_setup: &python_setup
+  - python3 --version
+  - python3 -m venv .venv
+  - . .venv/bin/activate
+  - python -m pip install --upgrade pip wheel
 
 lint:
   stage: lint
   script:
+    - *python_setup
     - pip install -e ".[dev]"
     - ruff check .
     - ruff format --check .
@@ -28,11 +39,8 @@ lint:
 
 test:
   stage: test
-  parallel:
-    matrix:
-      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13"]
-  image: python:${PYTHON_VERSION}-slim
   script:
+    - *python_setup
     - pip install -e ".[dev]"
     - pytest -m "not live" --cov=checkhost --cov-report=term --cov-report=xml
   coverage: '/(?i)total.*\s+(\d+%)$/'
@@ -50,6 +58,7 @@ test:
 build:
   stage: build
   script:
+    - *python_setup
     - pip install build
     - python -m build
   artifacts:
@@ -71,6 +80,7 @@ build:
 publish_pypi:
   stage: publish
   script:
+    - *python_setup
     - pip install --upgrade build twine
     - python -m build
     - twine check dist/*
