@@ -6,6 +6,7 @@ errors instead of opaque 400 responses from the API.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from typing import Final
 
@@ -55,6 +56,13 @@ MAX_REPEAT_CHECKS: Final[int] = 120
 
 MTR_MIN_REPEAT_CHECKS: Final[int] = 3
 MTR_MAX_REPEAT_CHECKS: Final[int] = 30
+
+FULLSCAN_SCOPES: Final[frozenset[str]] = frozenset({"basic", "deep", "full"})
+
+MAX_PREFIX_MASK: Final[int] = 128
+
+_ASN_RE: Final[re.Pattern[str]] = re.compile(r"^(?:AS)?(\d+)$", re.IGNORECASE)
+_SHA256_RE: Final[re.Pattern[str]] = re.compile(r"^[a-f0-9]{64}$")
 
 
 def validate_target(target: str) -> str:
@@ -163,6 +171,57 @@ def validate_region(region: Iterable[str] | None) -> list[str] | None:
             raise CheckHostValidationError(f"region[{idx}] is empty")
         out.append(rs)
     return out
+
+
+def validate_asn(asn: int | str) -> str:
+    """Normalise an AS number to its bare decimal form.
+
+    Accepts ``13335``, ``"13335"`` and ``"AS13335"``; the API takes either
+    spelling but the bare number keeps generated URLs canonical.
+    """
+    if isinstance(asn, bool):
+        raise CheckHostValidationError("asn must be an int or string, got bool")
+    if isinstance(asn, int):
+        if asn < 0:
+            raise CheckHostValidationError(f"asn must be >= 0, got {asn}")
+        return str(asn)
+    if not isinstance(asn, str):
+        raise CheckHostValidationError(f"asn must be an int or string, got {type(asn).__name__}")
+    match = _ASN_RE.match(asn.strip())
+    if match is None:
+        raise CheckHostValidationError(f"asn must look like '13335' or 'AS13335', got '{asn}'")
+    return match.group(1)
+
+
+def validate_cert_sha256(sha256: str) -> str:
+    """Ensure *sha256* is a 64-character lowercase hex certificate fingerprint."""
+    if not isinstance(sha256, str):
+        raise CheckHostValidationError(f"sha256 must be a string, got {type(sha256).__name__}")
+    normalized = sha256.strip().lower()
+    if _SHA256_RE.match(normalized) is None:
+        raise CheckHostValidationError(f"sha256 must be 64 hexadecimal characters, got '{sha256}'")
+    return normalized
+
+
+def validate_prefix_mask(mask: int) -> int:
+    """Ensure a CIDR prefix length is in the range [0, 128]."""
+    if isinstance(mask, bool) or not isinstance(mask, int):
+        raise CheckHostValidationError(f"mask must be an int, got {type(mask).__name__}")
+    if not (0 <= mask <= MAX_PREFIX_MASK):
+        raise CheckHostValidationError(f"mask must be between 0 and {MAX_PREFIX_MASK}, got {mask}")
+    return mask
+
+
+def validate_fullscan_scope(scope: str) -> str:
+    """Ensure *scope* is one of ``basic``, ``deep`` or ``full``."""
+    if not isinstance(scope, str):
+        raise CheckHostValidationError(f"scope must be a string, got {type(scope).__name__}")
+    normalized = scope.strip().lower()
+    if normalized not in FULLSCAN_SCOPES:
+        raise CheckHostValidationError(
+            f"scope must be one of {sorted(FULLSCAN_SCOPES)}, got '{scope}'"
+        )
+    return normalized
 
 
 def validate_timeout(timeout: int | None) -> int | None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 import urllib.parse
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 from types import TracebackType
@@ -12,12 +13,16 @@ from typing import Any
 
 from ._client import DEFAULT_BASE_URL, DEFAULT_TIMEOUT, Client
 from ._exceptions import CheckHostTimeoutError, CheckHostValidationError
-from ._models import CheckCreated, MinResponseINFO, Report
+from ._models import CheckCreated, FullscanJob, MinResponseINFO, Report
 from ._validation import (
+    validate_asn,
+    validate_cert_sha256,
     validate_dns_query_method,
+    validate_fullscan_scope,
     validate_mtr_force_ip_version,
     validate_mtr_force_protocol,
     validate_port,
+    validate_prefix_mask,
     validate_region,
     validate_repeat_checks,
     validate_target,
@@ -32,13 +37,20 @@ _MIN_POLL_INTERVAL = 1.0
 class CheckHost:
     """Synchronous client for the Check-Host.cc API.
 
+    The token is sent as ``Authorization: Bearer <token>`` on every request.
+    It is optional - without one you get anonymous access under tighter
+    per-IP rate limits.
+
     Args:
-        apikey: API key. Falls back to environment variable
-            ``CHECK_HOST_API_KEY`` when ``None``.
+        token: API token (UUID). Falls back to the environment variable
+            ``CHECK_HOST_API_TOKEN`` (or the legacy ``CHECK_HOST_API_KEY``)
+            when ``None``.
         base_url: Override the API base URL (useful for tests or dev mirrors).
         timeout: Per-request HTTP timeout in seconds.
         user_agent: Custom ``User-Agent`` header. Defaults to
             ``check-host-python/<version>``.
+        apikey: Deprecated alias for *token*, kept so pre-1.1 keyword calls
+            keep working.
 
     Example:
         >>> with CheckHost() as ch:
@@ -50,14 +62,26 @@ class CheckHost:
 
     def __init__(
         self,
-        apikey: str | None = None,
+        token: str | None = None,
         *,
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         user_agent: str | None = None,
+        apikey: str | None = None,
     ) -> None:
+        if apikey is not None:
+            if token is not None:
+                raise CheckHostValidationError("Pass either token or apikey, not both")
+            warnings.warn(
+                "The 'apikey' argument is deprecated and will be removed in 2.0; "
+                "use 'token' instead. The credential is now sent as an "
+                "Authorization: Bearer header rather than in the request body.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            token = apikey
         self._client = Client(
-            apikey=apikey,
+            token=token,
             base_url=base_url,
             timeout=timeout,
             user_agent=user_agent,
@@ -411,8 +435,215 @@ class CheckHost:
         return out
 
     # ------------------------------------------------------------------
+    # Network Intelligence
+    # ------------------------------------------------------------------
+
+    def ip_intel(self, ip: str) -> dict[str, Any]:
+        """Full intelligence profile for a single IP (``GET /ip/{ip}``).
+
+        Covers reverse DNS, open ports and banners, TLS certificates, BGP/ASN
+        attribution, GeoIP, tech-stack, co-hosted domains, origin-leak
+        candidates, threat-intel matches and honeypot activity.
+
+        Honeypot passwords are never returned in cleartext - each entry only
+        exposes ``password_captured`` and ``password_len``.
+
+        Sections the dataset has no data for come back as empty lists or
+        ``None``, so the response is returned as a plain dict rather than a
+        fixed dataclass.
+        """
+        return self._get_intel(f"/ip/{self._q(validate_target(ip))}")
+
+    def asn_intel(self, asn: int | str) -> dict[str, Any]:
+        """Autonomous-system profile (``GET /as/{asn}``).
+
+        Accepts ``13335`` or ``"AS13335"``. Returns prefix counts, announced
+        IP totals, peers / providers / customers, IXP memberships, RPKI
+        coverage, GeoIP footprint, top ports and hosted-domain summaries.
+        """
+        return self._get_intel(f"/as/{validate_asn(asn)}")
+
+    def prefix_intel(self, net: str, mask: int) -> dict[str, Any]:
+        """CIDR prefix intelligence (``GET /prefix/{net}/{mask}``).
+
+        BGP origin, RPKI validity, GeoIP distribution, open-IP count, top
+        ports and sample scanned hosts inside the block.
+        """
+        return self._get_intel(
+            f"/prefix/{self._q(validate_target(net))}/{validate_prefix_mask(mask)}"
+        )
+
+    def domain_intel(self, domain: str) -> dict[str, Any]:
+        """Domain intelligence (``GET /domain/{domain}``).
+
+        Current DNS records plus passive-DNS history, TLS certificates, CT-log
+        evidence, discovered subdomains, tech-stack and origin-leak
+        (Cloudflare-bypass) candidates.
+        """
+        return self._get_intel(f"/domain/{self._q(validate_target(domain))}")
+
+    def cert_intel(self, sha256: str) -> dict[str, Any]:
+        """TLS certificate intelligence (``GET /cert/{sha256}``).
+
+        Args:
+            sha256: 64-character hex fingerprint of the certificate.
+
+        Returns subject, issuer, SANs and validity window, every
+        ``(ip, port)`` observed serving it, and matching CT-log entries.
+        """
+        return self._get_intel(f"/cert/{validate_cert_sha256(sha256)}")
+
+    def port_intel(self, port: int) -> dict[str, Any]:
+        """Port exposure across the scanned Internet (``GET /port/{port}``).
+
+        Open-IP count, most common banners, top countries and ASNs,
+        tech-stack and a sample of recent hosts.
+        """
+        return self._get_intel(f"/port/{validate_port(port)}")
+
+    def software_intel(self, name: str, version: str | None = None) -> dict[str, Any]:
+        """Tech-stack intelligence (``GET /software/{name}[/{version}]``).
+
+        Host counts for a detected technology, version breakdown, categories
+        and a sample of hosts. Pass *version* to pin the stats to one release.
+        """
+        path = f"/software/{self._q(validate_target(name))}"
+        if version is not None:
+            path += f"/{self._q(validate_target(version))}"
+        return self._get_intel(path)
+
+    def recent_scans(self, target: str) -> dict[str, Any]:
+        """Most-recent fullscan jobs for *target* (``GET /scan/{target}``).
+
+        Lets you deep-link to a fresh report instead of dispatching a
+        redundant scan. Use :meth:`fullscan_jobs` for the parsed job list.
+        """
+        return self._get_intel(f"/scan/{self._q(validate_target(target))}")
+
+    def fullscan_jobs(self, target: str) -> list[FullscanJob]:
+        """:meth:`recent_scans` parsed into :class:`FullscanJob` objects."""
+        data = self.recent_scans(target)
+        scans = data.get("recent_scans")
+        if not isinstance(scans, list):
+            return []
+        return [FullscanJob.from_json(s) for s in scans if isinstance(s, dict)]
+
+    # ------------------------------------------------------------------
+    # Fullscan
+    # ------------------------------------------------------------------
+
+    def fullscan(self, target: str, *, scope: str = "deep") -> FullscanJob:
+        """Dispatch a deep multi-stage scan (``POST /fullscan``).
+
+        Args:
+            target: IPv4/IPv6 address, CIDR block, domain or AS number.
+            scope: ``"basic"`` (top-100 ports + banner), ``"deep"`` (default -
+                full port range, TLS, body and threat-intel) or ``"full"``
+                (deep plus subdomain enumeration; domains only).
+
+        Returns immediately with ``status="pending"``. Poll
+        :meth:`fullscan_status` for progress, or use :meth:`wait_for_fullscan`.
+
+        Anonymous CIDR submissions are capped at ``/24`` (v4) and ``/120``
+        (v6); an API token raises that to ``/20`` and ``/112``.
+        """
+        body = {
+            "target": validate_target(target),
+            "scope": validate_fullscan_scope(scope),
+        }
+        data = self._client.post("/fullscan", body)
+        if not isinstance(data, dict):
+            raise CheckHostValidationError(
+                f"Unexpected /fullscan response type: {type(data).__name__}"
+            )
+        return FullscanJob.from_json(data)
+
+    def fullscan_status(self, uuid: str) -> FullscanJob:
+        """Poll a fullscan's progress counters (``GET /fullscan/{uuid}``)."""
+        uuid = self._validate_uuid(uuid)
+        data = self._client.get(f"/fullscan/{self._q(uuid)}")
+        if not isinstance(data, dict):
+            raise CheckHostValidationError(
+                f"Unexpected /fullscan/{{uuid}} response type: {type(data).__name__}"
+            )
+        return FullscanJob.from_json(data)
+
+    def fullscan_results(self, uuid: str) -> dict[str, Any]:
+        """Aggregated fullscan findings (``GET /fullscan/{uuid}/results``).
+
+        Open ports, banners, DNS records, BGP context and TLS certificates.
+        Partial results are available while the job is still running.
+        """
+        uuid = self._validate_uuid(uuid)
+        data = self._client.get(f"/fullscan/{self._q(uuid)}/results")
+        return data if isinstance(data, dict) else {}
+
+    def wait_for_fullscan(
+        self,
+        uuid: str,
+        *,
+        interval: float = 3.0,
+        max_wait: float = 300.0,
+        require_complete: bool = True,
+    ) -> FullscanJob:
+        """Poll ``/fullscan/{uuid}`` until the job reaches a terminal status.
+
+        Fullscans are far slower than node checks - a deep scan of a domain
+        routinely takes minutes - so the defaults are much more patient than
+        :meth:`wait_for_report`.
+
+        Args:
+            uuid: The UUID returned by :meth:`fullscan`.
+            interval: Seconds between polls (clamped to ``>= 1.0``).
+            max_wait: Maximum total seconds to wait.
+            require_complete: When ``True`` (default), raise
+                :class:`CheckHostTimeoutError` if the deadline passes while the
+                job is still pending or running. When ``False``, return the
+                latest job state instead.
+
+        Raises:
+            CheckHostTimeoutError: When ``require_complete=True`` and the
+                deadline elapses before the job finishes.
+        """
+        uuid = self._validate_uuid(uuid)
+        if max_wait < 0:
+            raise CheckHostValidationError(f"max_wait must be >= 0, got {max_wait}")
+        if interval <= 0:
+            raise CheckHostValidationError(f"interval must be > 0, got {interval}")
+        poll = max(interval, _MIN_POLL_INTERVAL)
+
+        deadline = time.monotonic() + max_wait
+        last = self.fullscan_status(uuid)
+        if last.is_finished:
+            return last
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(poll, remaining))
+            last = self.fullscan_status(uuid)
+            if last.is_finished:
+                return last
+        if require_complete:
+            raise CheckHostTimeoutError(
+                f"Fullscan {uuid} not finished after {max_wait}s "
+                f"(status={last.status!r}, {last.subjobs_done}/{last.subjobs_total} sub-jobs)"
+            )
+        return last
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _get_intel(self, path: str) -> dict[str, Any]:
+        """GET an Intelligence endpoint and normalise the envelope to a dict."""
+        data = self._client.get(path)
+        return data if isinstance(data, dict) else {}
+
+    @staticmethod
+    def _q(value: str) -> str:
+        """Percent-encode a single path segment."""
+        return urllib.parse.quote(value, safe="")
 
     def _build_monitoring_body(
         self,

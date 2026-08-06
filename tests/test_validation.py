@@ -6,10 +6,14 @@ import pytest
 
 from checkhost._exceptions import CheckHostValidationError
 from checkhost._validation import (
+    validate_asn,
+    validate_cert_sha256,
     validate_dns_query_method,
+    validate_fullscan_scope,
     validate_mtr_force_ip_version,
     validate_mtr_force_protocol,
     validate_port,
+    validate_prefix_mask,
     validate_region,
     validate_repeat_checks,
     validate_target,
@@ -149,3 +153,86 @@ class TestValidateTimeout:
     def test_rejects_non_int(self) -> None:
         with pytest.raises(CheckHostValidationError):
             validate_timeout(1.5)  # type: ignore[arg-type]
+
+
+class TestValidateAsn:
+    @pytest.mark.parametrize(
+        ("given", "expected"),
+        [
+            (13335, "13335"),
+            ("13335", "13335"),
+            ("AS13335", "13335"),
+            ("as13335", "13335"),
+            ("  AS13335  ", "13335"),
+            (0, "0"),
+        ],
+    )
+    def test_normalises_to_bare_number(self, given: int | str, expected: str) -> None:
+        assert validate_asn(given) == expected
+
+    @pytest.mark.parametrize("bad", ["", "AS", "ASN13335", "13335x", "-1", "AS 13335"])
+    def test_rejects_malformed(self, bad: str) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_asn(bad)
+
+    def test_rejects_negative_int(self) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_asn(-1)
+
+    def test_rejects_bool(self) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_asn(True)
+
+    def test_rejects_non_int_non_str(self) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_asn(1.5)  # type: ignore[arg-type]
+
+
+class TestValidateCertSha256:
+    def test_lowercases_and_strips(self) -> None:
+        assert validate_cert_sha256("  " + "A" * 64 + "  ") == "a" * 64
+
+    @pytest.mark.parametrize("bad", ["", "deadbeef", "g" * 64, "a" * 63, "a" * 65])
+    def test_rejects_malformed(self, bad: str) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_cert_sha256(bad)
+
+    def test_rejects_non_string(self) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_cert_sha256(123)  # type: ignore[arg-type]
+
+
+class TestValidatePrefixMask:
+    @pytest.mark.parametrize("v", [0, 24, 32, 64, 128])
+    def test_accepts_valid_range(self, v: int) -> None:
+        assert validate_prefix_mask(v) == v
+
+    @pytest.mark.parametrize("v", [-1, 129])
+    def test_rejects_out_of_range(self, v: int) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_prefix_mask(v)
+
+    def test_rejects_bool(self) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_prefix_mask(True)
+
+    def test_rejects_non_int(self) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_prefix_mask("24")  # type: ignore[arg-type]
+
+
+class TestValidateFullscanScope:
+    @pytest.mark.parametrize("v", ["basic", "deep", "full"])
+    def test_accepts_known_scopes(self, v: str) -> None:
+        assert validate_fullscan_scope(v) == v
+
+    def test_normalises_case_and_whitespace(self) -> None:
+        assert validate_fullscan_scope("  DEEP ") == "deep"
+
+    def test_rejects_unknown(self) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_fullscan_scope("turbo")
+
+    def test_rejects_non_string(self) -> None:
+        with pytest.raises(CheckHostValidationError):
+            validate_fullscan_scope(None)  # type: ignore[arg-type]

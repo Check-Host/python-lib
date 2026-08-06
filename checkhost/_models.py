@@ -166,6 +166,80 @@ class CheckCreated:
         )
 
 
+_FULLSCAN_TERMINAL_STATUSES: frozenset[str] = frozenset({"complete", "partial", "failed"})
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FullscanJob:
+    """Master job row for a fullscan (``POST /fullscan``, ``GET /fullscan/{uuid}``).
+
+    Also the shape of every entry in ``recent_scans()``. Progress is tracked
+    through the ``subjobs_*`` counters; :attr:`is_finished` tells you when
+    polling can stop.
+    """
+
+    uuid: str
+    target: str
+    target_type: str
+    scope: str
+    status: str
+    subjobs_total: int
+    subjobs_done: int
+    subjobs_failed: int
+    error: str | None
+    created_at: str | None
+    completed_at: str | None
+    report_url: str
+    api_url: str
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @property
+    def is_finished(self) -> bool:
+        """``True`` once the job reached a terminal status."""
+        return self.status.lower() in _FULLSCAN_TERMINAL_STATUSES
+
+    @property
+    def progress(self) -> float:
+        """Completion ratio in ``[0.0, 1.0]``. ``0.0`` while still fanning out."""
+        if self.subjobs_total <= 0:
+            return 0.0
+        return min(1.0, self.subjobs_done / self.subjobs_total)
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FullscanJob:
+        # GET /fullscan/{uuid} wraps the row in {"success": ..., "job": {...}}.
+        nested = data.get("job")
+        job: dict[str, Any] = nested if isinstance(nested, dict) else data
+
+        def _optstr(v: Any) -> str | None:
+            return None if v is None else str(v)
+
+        def _int(v: Any) -> int:
+            if v is None or isinstance(v, bool):
+                return 0
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return 0
+
+        return cls(
+            uuid=str(job.get("uuid", "")),
+            target=str(job.get("target", "")),
+            target_type=str(job.get("target_type", "")),
+            scope=str(job.get("scope", "")),
+            status=str(job.get("status", "")),
+            subjobs_total=_int(job.get("subjobs_total")),
+            subjobs_done=_int(job.get("subjobs_done")),
+            subjobs_failed=_int(job.get("subjobs_failed")),
+            error=_optstr(job.get("error")),
+            created_at=_optstr(job.get("created_at")),
+            completed_at=_optstr(job.get("completed_at")),
+            report_url=str(job.get("report_url", "")),
+            api_url=str(job.get("api_url", "")),
+            raw=dict(job),
+        )
+
+
 _REPORT_META_KEYS: frozenset[str] = frozenset(
     {
         "status",

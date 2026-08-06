@@ -15,15 +15,17 @@ Full API reference: <https://check-host.cc/docs>.
 ## Highlights
 
 - **Zero runtime dependencies** — built on top of `urllib.request`.
-- **Full Swagger 2.0.0 parity** — every endpoint covered, including
-  `/myinfo`, `/report/{uuid}/og-image` and `/report/{uuid}/country-map`.
+- **Full Swagger 2.1.0 parity** — every endpoint covered, including the
+  Network Intelligence and Fullscan families, `/myinfo`,
+  `/report/{uuid}/og-image` and `/report/{uuid}/country-map`.
 - **Type hints throughout** with a [PEP 561](https://peps.python.org/pep-0561/)
   `py.typed` marker.
 - **POST-based requests** — no URL-encoding pitfalls.
-- **Built-in polling helper** `wait_for_report()` so you don't have to
-  babysit the `report` endpoint by hand.
-- **Automatic API-key injection** from the constructor or the
-  `CHECK_HOST_API_KEY` environment variable.
+- **Built-in polling helpers** `wait_for_report()` and
+  `wait_for_fullscan()` so you don't have to babysit the endpoints by hand.
+- **Bearer-token auth** from the constructor or the
+  `CHECK_HOST_API_TOKEN` environment variable — sent as an
+  `Authorization` header, never in the URL or request body.
 - **Granular exception hierarchy** — separate classes for 400, 404,
   429 and 5xx.
 - **Client-side validation** for ports, DNS record types, MTR repeats
@@ -70,18 +72,31 @@ with CheckHost() as ch:
 
 ## Authentication
 
-The API works without a key (subject to public rate limits). For higher
-limits, provide an API key (UUID) via constructor or environment variable:
+The API works anonymously, subject to public rate limits. For higher limits
+and a per-token monthly quota, pass your API token (UUID) to the constructor
+or put it in the environment:
 
 ```python
-ch = CheckHost("YOUR_API_KEY_UUID")
+ch = CheckHost("YOUR_API_TOKEN_UUID")
 # or
 import os
-os.environ["CHECK_HOST_API_KEY"] = "YOUR_API_KEY_UUID"
+os.environ["CHECK_HOST_API_TOKEN"] = "YOUR_API_TOKEN_UUID"
 ch = CheckHost()
 ```
 
 When both are present, the constructor argument wins.
+
+The SDK sends the token as an `Authorization: Bearer <token>` header on every
+request — GET, POST and binary alike. It is never placed in the query string
+or the request body, so it does not leak into access logs, referrer headers
+or browser history.
+
+> **Migrating from 1.0.x:** the token used to travel in the JSON body as an
+> `apikey` field. That field is deprecated server-side. The
+> `CheckHost(apikey=...)` keyword still works but emits a `DeprecationWarning`
+> and will be removed in 2.0 — rename it to `token`. Positional calls
+> (`CheckHost("...")`) are unaffected. The old `CHECK_HOST_API_KEY`
+> environment variable is still read as a fallback.
 
 ## Complete API Reference & Examples
 
@@ -296,6 +311,105 @@ ch.save_country_map(task.uuid, "./status.svg")
 
 ---
 
+### Network Intelligence
+
+Passive lookups against the dataset behind the entity pages — no check is
+dispatched, results come back immediately. Every method returns a plain
+`dict` because the `data` section is open-ended: sections we hold no data for
+come back as empty lists or `None`.
+
+#### IP profile
+
+```python
+intel = ch.ip_intel("1.1.1.1")
+data = intel["data"]
+print(data["bgp"]["as_name"])                    # Cloudflare, Inc.
+print([p["port"] for p in data["open_ports"]])   # [443, ...]
+```
+
+Sections: `ptr`, `open_ports`, `banners`, `tls_certs`, `co_hosted_domains`,
+`external_refs`, `leak_candidates`, `titles`, `techs`, `bgp`, `geo`,
+`probe_findings`, `threat_matches`, `threat_count`, `honeypot`,
+`honeypot_recent`, `honeypot_actor`, `honeypot_ja`, `honeypot_classes`.
+
+Honeypot passwords are never returned in cleartext — entries expose only
+`password_captured` (bool) and `password_len`.
+
+#### ASN, prefix, domain, certificate
+
+```python
+asn = ch.asn_intel("AS13335")        # or ch.asn_intel(13335)
+prefix = ch.prefix_intel("1.1.1.0", 24)
+domain = ch.domain_intel("check-host.cc")
+cert = ch.cert_intel("3a1b8f0c…9f90")   # 64-char hex fingerprint
+
+print(asn["data"]["prefix_count"])
+print(domain["data"]["subdomains"])
+print(cert["data"]["served_by"])
+```
+
+#### Port and software exposure
+
+```python
+port = ch.port_intel(443)
+print(port["well_known"], port["data"]["open_ips"])
+
+nginx = ch.software_intel("nginx")                # all versions
+pinned = ch.software_intel("nginx", "1.24.0")     # one version
+```
+
+### Fullscan
+
+A deep, on-demand multi-stage scan (ports + banners + TLS + DNS +
+threat-intel). Asynchronous: submit, poll, then read the results.
+
+```python
+job = ch.fullscan("check-host.cc", scope="deep")
+print(job.uuid, job.status)            # ... pending
+
+# Block until the job reaches a terminal status (complete/partial/failed)
+job = ch.wait_for_fullscan(job.uuid, max_wait=300.0)
+print(job.status, job.progress)        # complete 1.0
+
+results = ch.fullscan_results(job.uuid)
+for entry in results["data"]["open_ports"]:
+    print(entry["port"], entry["service"])
+```
+
+Scopes: `basic` (top-100 ports + banner), `deep` (default — full port range,
+TLS, body and threat-intel), `full` (deep plus subdomain enumeration; domains
+only).
+
+Anonymous CIDR submissions are capped at `/24` (v4) and `/120` (v6); an API
+token raises that to `/20` and `/112`.
+
+Before dispatching a scan, check whether a recent one already exists:
+
+```python
+for prior in ch.fullscan_jobs("check-host.cc"):
+    if prior.is_finished:
+        results = ch.fullscan_results(prior.uuid)
+        break
+```
+
+`fullscan()`, `fullscan_status()`, `wait_for_fullscan()` and
+`fullscan_jobs()` all return `FullscanJob` objects:
+
+| Attribute | Meaning |
+|---|---|
+| `uuid` | Job handle for the status / results endpoints |
+| `target`, `target_type` | Submitted target and its classification (`ip`, `cidr`, `domain`, `asn`) |
+| `scope` | `basic`, `deep` or `full` |
+| `status` | `pending`, `running`, `complete`, `partial` or `failed` |
+| `subjobs_total`, `subjobs_done`, `subjobs_failed` | Fan-out counters |
+| `is_finished` | `True` once the status is terminal |
+| `progress` | `subjobs_done / subjobs_total`, clamped to `[0.0, 1.0]` |
+| `error` | Failure reason, or `None` |
+| `report_url`, `api_url` | Human and machine report links |
+| `raw` | The unmodified job dict |
+
+---
+
 ## API surface (reference table)
 
 | Method | Endpoint | Returns |
@@ -317,6 +431,19 @@ ch.save_country_map(task.uuid, "./status.svg")
 | `ch.save_og_image(uuid, path)` | same | `Path` |
 | `ch.country_map(uuid, *, format="svg", resolution="med")` | `GET /report/{uuid}/country-map` | `bytes` |
 | `ch.save_country_map(uuid, path, *, format="svg", resolution="med")` | same | `Path` |
+| `ch.ip_intel(ip)` | `GET /ip/{ip}` | `dict[str, Any]` |
+| `ch.asn_intel(asn)` | `GET /as/{asn}` | `dict[str, Any]` |
+| `ch.prefix_intel(net, mask)` | `GET /prefix/{net}/{mask}` | `dict[str, Any]` |
+| `ch.domain_intel(domain)` | `GET /domain/{domain}` | `dict[str, Any]` |
+| `ch.cert_intel(sha256)` | `GET /cert/{sha256}` | `dict[str, Any]` |
+| `ch.port_intel(port)` | `GET /port/{port}` | `dict[str, Any]` |
+| `ch.software_intel(name, version=None)` | `GET /software/{name}[/{version}]` | `dict[str, Any]` |
+| `ch.recent_scans(target)` | `GET /scan/{target}` | `dict[str, Any]` |
+| `ch.fullscan_jobs(target)` | same, parsed | `list[FullscanJob]` |
+| `ch.fullscan(target, *, scope="deep")` | `POST /fullscan` | `FullscanJob` |
+| `ch.fullscan_status(uuid)` | `GET /fullscan/{uuid}` | `FullscanJob` |
+| `ch.fullscan_results(uuid)` | `GET /fullscan/{uuid}/results` | `dict[str, Any]` |
+| `ch.wait_for_fullscan(uuid, *, interval=3.0, max_wait=300.0, require_complete=True)` | polls `GET /fullscan/{uuid}` | `FullscanJob` |
 
 ### Client-side validation
 
@@ -328,6 +455,10 @@ The SDK rejects obviously bad input before issuing an HTTP call:
 - `query_method`: one of `A`, `AAAA`, `MX`, `TXT`, `CAA`, `A/AAAA`, …
   (full list in `checkhost.regions.DNSType.ALL`)
 - `force_ip_version`: 4 or 6
+- `asn`: `13335` or `AS13335` (normalised to the bare number)
+- `sha256`: 64 hexadecimal characters
+- `mask`: 0-128
+- `scope`: `basic`, `deep` or `full`
 - `force_protocol`: `"icmp" | "udp" | "tcp"`
 - `country_map.format`: `"svg" | "png"`
 - `country_map.resolution`: `"low" | "med" | "high"`
@@ -374,7 +505,7 @@ with CheckHost() as ch:
         # Invalid input - fix the call.
         ...
     except CheckHostRateLimitError as exc:
-        # 429: provide an API key or back off.
+        # 429: send an API token or back off.
         ...
     except CheckHostBadRequestError as exc:
         # 400: bad payload.
@@ -433,10 +564,10 @@ ruff check . && mypy checkhost
 ```
 
 To run the integration tests against the live API (consumes real
-rate-limit budget — set `CHECK_HOST_API_KEY` for higher quotas):
+rate-limit budget — set `CHECK_HOST_API_TOKEN` for higher quotas):
 
 ```bash
-pytest -m live              # 8 live tests, ~6s with an API key
+pytest -m live              # 8 live tests, ~6s with an API token
 ```
 
 ## License

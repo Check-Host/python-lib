@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-06
+
+Aligned with **Check-Host.cc API Swagger 2.1.0**.
+
+### Changed
+- **The API token is now sent as an `Authorization: Bearer <token>`
+  header** instead of an `apikey` field in the JSON request body. The
+  header applies to every request - GET, POST and binary - so the token
+  no longer appears in request bodies, and it never appeared in URLs.
+  The server-side `apikey` body field is deprecated.
+- `CheckHost(token=...)` is the constructor argument. Positional calls
+  (`CheckHost("...")`) are unchanged.
+- `CHECK_HOST_API_TOKEN` is the preferred environment variable.
+
+### Added
+- Network Intelligence lookups: `ip_intel()`, `asn_intel()`,
+  `prefix_intel()`, `domain_intel()`, `cert_intel()`, `port_intel()`,
+  `software_intel()` and `recent_scans()`.
+- Fullscan support: `fullscan()`, `fullscan_status()`,
+  `fullscan_results()`, `fullscan_jobs()` and the `wait_for_fullscan()`
+  polling helper, plus the `FullscanJob` model.
+- Validation helpers for the new inputs: `validate_asn()`,
+  `validate_cert_sha256()`, `validate_prefix_mask()` and
+  `validate_fullscan_scope()`.
+
+### Deprecated
+- `CheckHost(apikey=...)` - emits a `DeprecationWarning` and will be
+  removed in 2.0. Use `token=` instead. Passing both raises
+  `CheckHostValidationError`.
+- The `CHECK_HOST_API_KEY` environment variable - still read as a
+  fallback when `CHECK_HOST_API_TOKEN` is unset.
+
 ## [1.0.1] - 2026-05-12
 
 ### Removed

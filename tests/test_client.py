@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from checkhost._client import _ENV_API_KEY, Client
+from checkhost._client import ENV_TOKEN, ENV_TOKEN_LEGACY, Client
 from checkhost._exceptions import (
     CheckHostAPIError,
     CheckHostBadRequestError,
@@ -18,35 +18,72 @@ from checkhost._exceptions import (
 from tests.conftest import FakeTransport
 
 
-class TestApikeyInjection:
-    def test_apikey_constructor_wins(self, transport: FakeTransport) -> None:
+class TestTokenTransport:
+    def test_token_is_sent_as_bearer_header(self, transport: FakeTransport) -> None:
         transport.queue_json({"ok": True})
-        client = Client(apikey="ctor-key")
+        client = Client(token="ctor-token")
+        client.post("/ping", {"target": "1.1.1.1"})
+        assert transport.last_call["headers"]["Authorization"] == "Bearer ctor-token"
+
+    def test_token_never_reaches_the_request_body(self, transport: FakeTransport) -> None:
+        transport.queue_json({"ok": True})
+        client = Client(token="ctor-token")
         client.post("/ping", {"target": "1.1.1.1"})
         body = transport.last_body_json
-        assert body["apikey"] == "ctor-key"
-        assert body["target"] == "1.1.1.1"
+        assert body == {"target": "1.1.1.1"}
+        assert "apikey" not in body
+
+    def test_token_never_reaches_the_url(self, transport: FakeTransport) -> None:
+        transport.queue_json({"ok": True})
+        client = Client(token="ctor-token")
+        client.get("/locations")
+        assert "ctor-token" not in transport.last_call["url"]
+
+    def test_get_requests_are_authenticated_too(self, transport: FakeTransport) -> None:
+        transport.queue_json({"ok": True})
+        client = Client(token="ctor-token")
+        client.get("/ip/1.1.1.1")
+        assert transport.last_call["headers"]["Authorization"] == "Bearer ctor-token"
+
+    def test_binary_requests_are_authenticated_too(self, transport: FakeTransport) -> None:
+        transport.queue_bytes(b"\x89PNG")
+        client = Client(token="ctor-token")
+        client.get_bytes("/report/x/og-image")
+        assert transport.last_call["headers"]["Authorization"] == "Bearer ctor-token"
 
     def test_env_var_fallback(
         self, transport: FakeTransport, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv(_ENV_API_KEY, "env-key")
+        monkeypatch.setenv(ENV_TOKEN, "env-token")
         transport.queue_json({"ok": True})
         client = Client()
         client.post("/ping", {"target": "1.1.1.1"})
-        assert transport.last_body_json["apikey"] == "env-key"
+        assert transport.last_call["headers"]["Authorization"] == "Bearer env-token"
 
-    def test_no_apikey_when_none(self, transport: FakeTransport) -> None:
+    def test_legacy_env_var_still_honoured(
+        self, transport: FakeTransport, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(ENV_TOKEN_LEGACY, "legacy-token")
         transport.queue_json({"ok": True})
         client = Client()
         client.post("/ping", {"target": "1.1.1.1"})
-        assert "apikey" not in transport.last_body_json
+        assert transport.last_call["headers"]["Authorization"] == "Bearer legacy-token"
 
-    def test_caller_payload_is_not_overridden(self, transport: FakeTransport) -> None:
+    def test_new_env_var_wins_over_legacy(
+        self, transport: FakeTransport, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(ENV_TOKEN, "new-token")
+        monkeypatch.setenv(ENV_TOKEN_LEGACY, "legacy-token")
         transport.queue_json({"ok": True})
-        client = Client(apikey="stored")
-        client.post("/ping", {"target": "1.1.1.1", "apikey": "explicit"})
-        assert transport.last_body_json["apikey"] == "explicit"
+        client = Client()
+        client.post("/ping", {"target": "1.1.1.1"})
+        assert transport.last_call["headers"]["Authorization"] == "Bearer new-token"
+
+    def test_no_authorization_header_when_anonymous(self, transport: FakeTransport) -> None:
+        transport.queue_json({"ok": True})
+        client = Client()
+        client.post("/ping", {"target": "1.1.1.1"})
+        assert "Authorization" not in transport.last_call["headers"]
 
 
 class TestStatusMapping:

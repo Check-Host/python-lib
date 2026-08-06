@@ -24,7 +24,7 @@ from ._exceptions import (
     CheckHostTimeoutError,
     CheckHostValidationError,
 )
-from ._models import CheckCreated, MinResponseINFO, Report
+from ._models import CheckCreated, FullscanJob, MinResponseINFO, Report
 from ._version import __version__
 from .api import CheckHost
 from .regions import Continent, DNSType, IPVersion, MTRProtocol
@@ -43,6 +43,7 @@ __all__ = [
     "CheckHostValidationError",
     "Continent",
     "DNSType",
+    "FullscanJob",
     "IPVersion",
     "MTRProtocol",
     "MinResponseINFO",

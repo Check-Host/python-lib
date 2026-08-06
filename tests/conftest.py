@@ -144,19 +144,20 @@ class FakeTransport:
 
 
 @pytest.fixture(autouse=True)
-def _clear_apikey_env(
+def _clear_token_env(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ensure unit tests run with no ambient ``CHECK_HOST_API_KEY``.
+    """Ensure unit tests run with no ambient token in the environment.
 
-    Without this, CI environments (which export the masked GitLab
-    variable to every job) make unit tests like ``test_no_apikey_when_none``
-    pick up a real key from the environment and fail. ``live`` tests opt
-    out so they can use the key when present.
+    Without this, CI environments (which export the masked GitLab variable
+    to every job) make unit tests like
+    ``test_no_authorization_header_when_anonymous`` pick up a real token
+    and fail. ``live`` tests opt out so they can use it when present.
     """
     if request.node.get_closest_marker("live"):
         return
+    monkeypatch.delenv("CHECK_HOST_API_TOKEN", raising=False)
     monkeypatch.delenv("CHECK_HOST_API_KEY", raising=False)
 
 

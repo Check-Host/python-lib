@@ -1,8 +1,14 @@
 # Konzept: check-host-api (Python SDK)
 
-**Status:** Entwurf v2 (nach Self-Review)
+**Status:** Historischer Entwurf v2 (nach Self-Review)
 **Datum:** 2026-05-12
 **Swagger-Referenz:** Check-Host.cc API v1.2.0
+
+> **Hinweis:** Dieses Dokument haelt den urspruenglichen Entwurf fest und wird
+> nicht mehr gepflegt. Es beschreibt Stand v1.2.0 der API — inzwischen
+> ueberholt durch Swagger 2.1.0. Insbesondere wandert der API-Token seit
+> Version 1.1.0 in den `Authorization: Bearer`-Header statt in den POST-Body.
+> Massgeblich sind `README.md` und `CHANGELOG.md`.
 
 ---
 

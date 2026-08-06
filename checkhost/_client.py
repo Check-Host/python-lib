@@ -29,25 +29,26 @@ DEFAULT_BASE_URL = "https://api.check-host.cc"
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_USER_AGENT = f"check-host-python/{__version__}"
 
-_ENV_API_KEY = "CHECK_HOST_API_KEY"
+ENV_TOKEN = "CHECK_HOST_API_TOKEN"
+ENV_TOKEN_LEGACY = "CHECK_HOST_API_KEY"
 
 
 class Client:
     """Internal HTTP client. End users go through :class:`checkhost.CheckHost`."""
 
-    __slots__ = ("_closed", "apikey", "base_url", "timeout", "user_agent")
+    __slots__ = ("_closed", "base_url", "timeout", "token", "user_agent")
 
     def __init__(
         self,
-        apikey: str | None = None,
+        token: str | None = None,
         *,
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         user_agent: str | None = None,
     ) -> None:
-        if apikey is None:
-            apikey = os.environ.get(_ENV_API_KEY)
-        self.apikey: str | None = apikey or None
+        if token is None:
+            token = os.environ.get(ENV_TOKEN) or os.environ.get(ENV_TOKEN_LEGACY)
+        self.token: str | None = token or None
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.user_agent = user_agent or DEFAULT_USER_AGENT
@@ -79,14 +80,11 @@ class Client:
         }
         if json_body:
             headers["Content-Type"] = "application/json"
+        if self.token:
+            # Bearer header for every verb; the token never touches the URL
+            # or the request body.
+            headers["Authorization"] = f"Bearer {self.token}"
         return headers
-
-    def _inject_apikey(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Inject the stored ``apikey`` into *payload* if one was provided
-        at construction time and the caller didn't already set it."""
-        if self.apikey and "apikey" not in payload:
-            payload = {"apikey": self.apikey, **payload}
-        return payload
 
     def _execute(
         self,
@@ -174,8 +172,9 @@ class Client:
 
     def post(self, path: str, body: dict[str, Any] | None = None) -> Any:
         """Issue ``POST`` and return the parsed JSON body."""
-        payload = self._inject_apikey(body or {})
-        _status, raw, content_type = self._execute("POST", path, body=payload, accept_binary=False)
+        _status, raw, content_type = self._execute(
+            "POST", path, body=body or {}, accept_binary=False
+        )
         return self._decode_json(raw, content_type)
 
     def get(self, path: str) -> Any:

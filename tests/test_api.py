@@ -40,6 +40,27 @@ def _check_created_payload(**overrides: object) -> dict[str, object]:
     return payload
 
 
+def _fullscan_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "success": True,
+        "uuid": "scan-1",
+        "target": "check-host.cc",
+        "target_type": "domain",
+        "scope": "deep",
+        "status": "pending",
+        "subjobs_total": 5,
+        "subjobs_done": 0,
+        "subjobs_failed": 0,
+        "error": None,
+        "created_at": "2026-07-14T09:12:44+00:00",
+        "completed_at": None,
+        "report_url": "https://check-host.cc/fullscan/scan-1",
+        "api_url": "https://check-host.cc/api/fullscan/scan-1",
+    }
+    payload.update(overrides)
+    return payload
+
+
 class TestUtilityMethods:
     def test_myip_returns_string(self, transport: FakeTransport) -> None:
         transport.queue_json("1.2.3.4")
@@ -356,6 +377,229 @@ class TestCountryMap:
         with CheckHost() as ch:
             written = ch.save_country_map("uuid-cm", target)
         assert written.read_bytes() == b"<svg>data</svg>"
+
+
+class TestIntelligenceMethods:
+    def test_ip_intel_hits_path_and_returns_dict(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True, "ip": "1.1.1.1", "data": {"threat_count": 0}})
+        with CheckHost() as ch:
+            out = ch.ip_intel("1.1.1.1")
+        assert transport.last_call["url"].endswith("/ip/1.1.1.1")
+        assert transport.last_call["method"] == "GET"
+        assert out["data"]["threat_count"] == 0
+
+    @pytest.mark.parametrize(
+        ("given", "expected"),
+        [(13335, "13335"), ("13335", "13335"), ("AS13335", "13335"), ("as13335", "13335")],
+    )
+    def test_asn_intel_normalises_asn(
+        self, transport: FakeTransport, given: int | str, expected: str
+    ) -> None:
+        transport.queue_json({"success": True, "asn": 13335})
+        with CheckHost() as ch:
+            ch.asn_intel(given)
+        assert transport.last_call["url"].endswith(f"/as/{expected}")
+
+    def test_asn_intel_rejects_garbage(self, transport: FakeTransport) -> None:
+        with CheckHost() as ch, pytest.raises(CheckHostValidationError):
+            ch.asn_intel("not-an-asn")
+
+    def test_prefix_intel_builds_two_segments(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True, "cidr": "1.1.1.0/24"})
+        with CheckHost() as ch:
+            ch.prefix_intel("1.1.1.0", 24)
+        assert transport.last_call["url"].endswith("/prefix/1.1.1.0/24")
+
+    def test_prefix_intel_rejects_out_of_range_mask(self, transport: FakeTransport) -> None:
+        with CheckHost() as ch, pytest.raises(CheckHostValidationError):
+            ch.prefix_intel("1.1.1.0", 129)
+
+    def test_domain_intel_percent_encodes(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True})
+        with CheckHost() as ch:
+            ch.domain_intel("a b.example")
+        assert transport.last_call["url"].endswith("/domain/a%20b.example")
+
+    def test_cert_intel_lowercases_fingerprint(self, transport: FakeTransport) -> None:
+        sha = "A" * 64
+        transport.queue_json({"success": True})
+        with CheckHost() as ch:
+            ch.cert_intel(sha)
+        assert transport.last_call["url"].endswith("/cert/" + "a" * 64)
+
+    def test_cert_intel_rejects_short_fingerprint(self, transport: FakeTransport) -> None:
+        with CheckHost() as ch, pytest.raises(CheckHostValidationError):
+            ch.cert_intel("deadbeef")
+
+    def test_port_intel_validates_range(self, transport: FakeTransport) -> None:
+        with CheckHost() as ch, pytest.raises(CheckHostValidationError):
+            ch.port_intel(70000)
+
+    def test_port_intel_ok(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True, "port": 443, "well_known": "HTTPS"})
+        with CheckHost() as ch:
+            assert ch.port_intel(443)["well_known"] == "HTTPS"
+        assert transport.last_call["url"].endswith("/port/443")
+
+    def test_software_intel_without_version(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True, "name": "nginx"})
+        with CheckHost() as ch:
+            ch.software_intel("nginx")
+        assert transport.last_call["url"].endswith("/software/nginx")
+
+    def test_software_intel_with_version(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True, "name": "nginx", "version": "1.24.0"})
+        with CheckHost() as ch:
+            ch.software_intel("nginx", "1.24.0")
+        assert transport.last_call["url"].endswith("/software/nginx/1.24.0")
+
+    def test_non_dict_response_normalises_to_empty_dict(self, transport: FakeTransport) -> None:
+        transport.queue_json(["unexpected"])
+        with CheckHost() as ch:
+            assert ch.ip_intel("1.1.1.1") == {}
+
+    def test_recent_scans(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True, "target": "check-host.cc", "recent_scans": []})
+        with CheckHost() as ch:
+            out = ch.recent_scans("check-host.cc")
+        assert transport.last_call["url"].endswith("/scan/check-host.cc")
+        assert out["recent_scans"] == []
+
+    def test_fullscan_jobs_parses_entries(self, transport: FakeTransport) -> None:
+        transport.queue_json(
+            {
+                "success": True,
+                "target": "check-host.cc",
+                "recent_scans": [
+                    _fullscan_payload(uuid="scan-1", status="complete"),
+                    "not-a-dict",
+                ],
+            }
+        )
+        with CheckHost() as ch:
+            jobs = ch.fullscan_jobs("check-host.cc")
+        assert len(jobs) == 1
+        assert jobs[0].uuid == "scan-1"
+        assert jobs[0].is_finished
+
+    def test_fullscan_jobs_handles_missing_key(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True})
+        with CheckHost() as ch:
+            assert ch.fullscan_jobs("check-host.cc") == []
+
+
+class TestFullscan:
+    def test_submit_sends_target_and_scope(self, transport: FakeTransport) -> None:
+        transport.queue_json(_fullscan_payload())
+        with CheckHost() as ch:
+            job = ch.fullscan("check-host.cc", scope="full")
+        assert transport.last_call["method"] == "POST"
+        assert transport.last_call["url"].endswith("/fullscan")
+        assert transport.last_body_json == {"target": "check-host.cc", "scope": "full"}
+        assert job.uuid == "scan-1"
+        assert job.target_type == "domain"
+
+    def test_submit_defaults_to_deep(self, transport: FakeTransport) -> None:
+        transport.queue_json(_fullscan_payload())
+        with CheckHost() as ch:
+            ch.fullscan("check-host.cc")
+        assert transport.last_body_json["scope"] == "deep"
+
+    def test_submit_rejects_unknown_scope(self, transport: FakeTransport) -> None:
+        with CheckHost() as ch, pytest.raises(CheckHostValidationError):
+            ch.fullscan("check-host.cc", scope="turbo")
+
+    def test_status_unwraps_job_envelope(self, transport: FakeTransport) -> None:
+        transport.queue_json(
+            {"success": True, "job": _fullscan_payload(status="running", subjobs_done=2)}
+        )
+        with CheckHost() as ch:
+            job = ch.fullscan_status("scan-1")
+        assert transport.last_call["url"].endswith("/fullscan/scan-1")
+        assert job.status == "running"
+        assert job.subjobs_done == 2
+        assert job.progress == 0.4
+        assert not job.is_finished
+
+    def test_results_endpoint(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True, "data": {"open_ports": [{"port": 443}]}})
+        with CheckHost() as ch:
+            out = ch.fullscan_results("scan-1")
+        assert transport.last_call["url"].endswith("/fullscan/scan-1/results")
+        assert out["data"]["open_ports"][0]["port"] == 443
+
+    def test_wait_returns_immediately_when_finished(self, transport: FakeTransport) -> None:
+        transport.queue_json({"success": True, "job": _fullscan_payload(status="complete")})
+        with CheckHost() as ch:
+            job = ch.wait_for_fullscan("scan-1")
+        assert job.is_finished
+        assert len(transport.calls) == 1
+
+    def test_wait_polls_until_terminal(
+        self, transport: FakeTransport, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(time, "sleep", lambda _s: None)
+        transport.queue_json({"success": True, "job": _fullscan_payload(status="pending")})
+        transport.queue_json({"success": True, "job": _fullscan_payload(status="running")})
+        transport.queue_json({"success": True, "job": _fullscan_payload(status="partial")})
+        with CheckHost() as ch:
+            job = ch.wait_for_fullscan("scan-1", interval=1.0, max_wait=30.0)
+        assert job.status == "partial"
+        assert len(transport.calls) == 3
+
+    def test_wait_times_out(
+        self, transport: FakeTransport, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(time, "sleep", lambda _s: None)
+        for _ in range(20):
+            transport.queue_json({"success": True, "job": _fullscan_payload(status="running")})
+        with CheckHost() as ch, pytest.raises(CheckHostTimeoutError):
+            ch.wait_for_fullscan("scan-1", interval=1.0, max_wait=0.0)
+
+    def test_wait_returns_partial_without_require_complete(
+        self, transport: FakeTransport, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(time, "sleep", lambda _s: None)
+        transport.queue_json({"success": True, "job": _fullscan_payload(status="running")})
+        with CheckHost() as ch:
+            job = ch.wait_for_fullscan("scan-1", max_wait=0.0, require_complete=False)
+        assert job.status == "running"
+
+    def test_failed_job_counts_as_finished(self, transport: FakeTransport) -> None:
+        transport.queue_json(
+            {"success": True, "job": _fullscan_payload(status="failed", error="boom")}
+        )
+        with CheckHost() as ch:
+            job = ch.fullscan_status("scan-1")
+        assert job.is_finished
+        assert job.error == "boom"
+
+    def test_progress_is_zero_before_fanout(self, transport: FakeTransport) -> None:
+        transport.queue_json(
+            {"success": True, "job": _fullscan_payload(subjobs_total=0, subjobs_done=0)}
+        )
+        with CheckHost() as ch:
+            assert ch.fullscan_status("scan-1").progress == 0.0
+
+
+class TestTokenArgument:
+    def test_token_reaches_the_authorization_header(self, transport: FakeTransport) -> None:
+        transport.queue_json("1.1.1.1")
+        with CheckHost("tok-123") as ch:
+            ch.myip()
+        assert transport.last_call["headers"]["Authorization"] == "Bearer tok-123"
+
+    def test_deprecated_apikey_kwarg_still_works(self, transport: FakeTransport) -> None:
+        transport.queue_json("1.1.1.1")
+        with pytest.warns(DeprecationWarning, match="use 'token' instead"):
+            ch = CheckHost(apikey="old-style")
+        with ch:
+            ch.myip()
+        assert transport.last_call["headers"]["Authorization"] == "Bearer old-style"
+
+    def test_passing_both_is_rejected(self, transport: FakeTransport) -> None:
+        with pytest.raises(CheckHostValidationError):
+            CheckHost("tok", apikey="key")
 
 
 class TestContextManager:

@@ -81,3 +81,48 @@ def test_live_country_map_svg(client: CheckHost) -> None:
     time.sleep(1.0)
     svg = client.country_map(task.uuid)
     assert b"<svg" in svg[:200]
+
+
+def test_live_ip_intel(client: CheckHost) -> None:
+    intel = client.ip_intel("1.1.1.1")
+    assert intel.get("success") is True
+    assert intel["ip"] == "1.1.1.1"
+    assert isinstance(intel["data"], dict)
+
+
+def test_live_asn_intel(client: CheckHost) -> None:
+    intel = client.asn_intel("AS13335")
+    assert intel.get("success") is True
+    assert intel["asn"] == 13335
+
+
+def test_live_prefix_intel(client: CheckHost) -> None:
+    intel = client.prefix_intel("1.1.1.0", 24)
+    assert intel.get("success") is True
+    assert intel["cidr"] == "1.1.1.0/24"
+
+
+def test_live_domain_intel(client: CheckHost) -> None:
+    intel = client.domain_intel("check-host.cc")
+    assert intel.get("success") is True
+    assert intel["domain"] == "check-host.cc"
+
+
+def test_live_port_intel(client: CheckHost) -> None:
+    intel = client.port_intel(443)
+    assert intel.get("success") is True
+    assert intel["port"] == 443
+
+
+def test_live_software_intel(client: CheckHost) -> None:
+    intel = client.software_intel("nginx")
+    assert intel.get("success") is True
+    assert intel["name"] == "nginx"
+
+
+def test_live_recent_scans(client: CheckHost) -> None:
+    jobs = client.fullscan_jobs("check-host.cc")
+    assert isinstance(jobs, list)
+    for job in jobs:
+        assert job.uuid
+        assert job.status
