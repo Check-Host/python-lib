@@ -85,6 +85,10 @@ include = [
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Ruff 0.16 started formatting Python code blocks inside Markdown. Keep it
+# to the package sources: the README aligns trailing comments on purpose,
+# and KONZEPT.md is a frozen design draft that should not be rewritten.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = [
