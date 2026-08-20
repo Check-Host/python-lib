@@ -111,9 +111,11 @@ requests for every endpoint.
 - `repeat_checks`: number of repeated probes per node. `0` = single
   shot; `>= 10` enables **Live Mode** (continuous probing for
   ~`repeat_checks` seconds).
-- `timeout`: per-request connection timeout in seconds (currently a
-  no-op on the Check-Host backend, but accepted for forward
-  compatibility).
+- `timeout`: per-check timeout in **milliseconds** (100-30000). Optional; the
+  server default depends on the check type (ping/tcp/mtr 1000, udp 2000,
+  dns 5000, http 15000). A value below 100 is read as seconds and converted
+  by the API, so older code passing `timeout=5` still works -- but new code
+  should pass milliseconds.
 
 ---
 
@@ -178,7 +180,7 @@ task = ch.ping(
     "8.8.8.8",
     region=["DE", "NL"],
     repeat_checks=5,           # >=10 enables Live Mode
-    timeout=5,
+    timeout=5000,
 )
 ```
 
@@ -210,7 +212,7 @@ task = ch.tcp(
     80,
     region=["DE", "NL"],
     repeat_checks=3,
-    timeout=10,
+    timeout=10000,
 )
 ```
 
@@ -420,11 +422,11 @@ for prior in ch.fullscan_jobs("check-host.cc"):
 | `ch.info(target)` | `POST /info` | `MinResponseINFO` |
 | `ch.whois(target)` | `POST /whois` | `dict[str, Any]` |
 | `ch.ping(target, *, region=None, repeat_checks=0, timeout=None)` | `POST /ping` | `CheckCreated` |
-| `ch.dns(target, *, query_method="A", region=None)` | `POST /dns` | `CheckCreated` |
+| `ch.dns(target, *, query_method="A", region=None, timeout=None)` | `POST /dns` | `CheckCreated` |
 | `ch.tcp(target, port, *, region=None, repeat_checks=0, timeout=None)` | `POST /tcp` | `CheckCreated` |
 | `ch.udp(target, port, *, payload=None, region=None, repeat_checks=0, timeout=None)` | `POST /udp` | `CheckCreated` |
 | `ch.http(target, *, region=None, repeat_checks=0, timeout=None)` | `POST /http` | `CheckCreated` |
-| `ch.mtr(target, *, region=None, repeat_checks=10, force_ip_version=None, force_protocol=None)` | `POST /mtr` | `CheckCreated` |
+| `ch.mtr(target, *, region=None, repeat_checks=10, force_ip_version=None, force_protocol=None, timeout=None)` | `POST /mtr` | `CheckCreated` |
 | `ch.report(uuid)` | `GET /report/{uuid}` | `Report` |
 | `ch.wait_for_report(uuid, *, interval=1.5, max_wait=30.0, require_complete=True)` | polls `GET /report/{uuid}` | `Report` |
 | `ch.og_image(uuid)` | `GET /report/{uuid}/og-image` | `bytes` (PNG) |

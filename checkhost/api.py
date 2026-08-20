@@ -194,8 +194,14 @@ class CheckHost:
         *,
         query_method: str = "A",
         region: Sequence[str] | None = None,
+        timeout: int | None = None,
     ) -> CheckCreated:
-        """Trigger a DNS propagation check (``POST /dns``)."""
+        """Trigger a DNS propagation check (``POST /dns``).
+
+        ``timeout`` is in MILLISECONDS (100-30000); the server default is 5000.
+        It was missing here while ping/tcp/udp/http all had it, even though the
+        API accepts it for every check type.
+        """
         body: dict[str, Any] = {
             "target": validate_target(target),
             "querymethod": validate_dns_query_method(query_method),
@@ -203,6 +209,9 @@ class CheckHost:
         region_list = validate_region(region)
         if region_list is not None:
             body["region"] = region_list
+        timeout_value = validate_timeout(timeout)
+        if timeout_value is not None:
+            body["timeout"] = timeout_value
         return CheckCreated.from_json(self._client.post("/dns", body))
 
     def tcp(
@@ -275,8 +284,14 @@ class CheckHost:
         repeat_checks: int = 10,
         force_ip_version: int | None = None,
         force_protocol: str | None = None,
+        timeout: int | None = None,
     ) -> CheckCreated:
-        """Trigger an MTR (My Traceroute) diagnostic (``POST /mtr``)."""
+        """Trigger an MTR (My Traceroute) diagnostic (``POST /mtr``).
+
+        ``timeout`` is sent in MILLISECONDS (100-30000) for consistency with the
+        other checks; the server converts it to whole seconds for mtr, so values
+        below 1000 behave as 1000. Server default is 1000.
+        """
         body: dict[str, Any] = {
             "target": validate_target(target),
             "repeatchecks": validate_repeat_checks(repeat_checks, mtr=True),
@@ -292,6 +307,10 @@ class CheckHost:
         fp = validate_mtr_force_protocol(force_protocol)
         if fp is not None:
             body["forceProtocol"] = fp
+
+        timeout_value = validate_timeout(timeout)
+        if timeout_value is not None:
+            body["timeout"] = timeout_value
 
         return CheckCreated.from_json(self._client.post("/mtr", body))
 
